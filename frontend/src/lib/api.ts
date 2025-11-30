@@ -113,12 +113,16 @@ class ApiClient {
       'Content-Type': 'application/json',
     };
 
-    if (requiresAuth) {
-      const token = TokenManager.get();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-    }
+    // if (requiresAuth) {
+    //   const token = TokenManager.get();
+    //   if (token) {
+    //     headers['Authorization'] = `Bearer ${token}`;
+    //   }
+    // }
+
+    // Always send fake token
+    headers['Authorization'] = `Bearer FAKE_TOKEN`;
+
 
     return headers;
   }
@@ -168,27 +172,57 @@ class ApiClient {
     return data as T;
   }
 
+  // async request<T>(
+  //   path: string,
+  //   options: RequestOptions = {}
+  // ): Promise<T> {
+  //   const { params, requiresAuth = false, ...fetchOptions } = options;
+
+  //   // Check if there was a token before making the request
+  //   const hadToken = TokenManager.exists();
+
+  //   const url = this.buildURL(path, params);
+  //   const headers = this.getHeaders(requiresAuth);
+
+  //   const response = await fetch(url, {
+  //     ...fetchOptions,
+  //     headers: {
+  //       ...headers,
+  //       ...fetchOptions.headers,
+  //     },
+  //   });
+
+  //   return this.handleResponse<T>(response, hadToken);
+  // }
+  // real nhé
+
   async request<T>(
     path: string,
     options: RequestOptions = {}
   ): Promise<T> {
-    const { params, requiresAuth = false, ...fetchOptions } = options;
-
-    // Check if there was a token before making the request
-    const hadToken = TokenManager.exists();
-
-    const url = this.buildURL(path, params);
-    const headers = this.getHeaders(requiresAuth);
-
-    const response = await fetch(url, {
-      ...fetchOptions,
-      headers: {
-        ...headers,
-        ...fetchOptions.headers,
+    // Fake data cho các endpoint thường dùng
+    const fakeData: Record<string, any> = {
+      '/auth/validate': { valid: true },
+      '/spaces': [{ id: 1, name: 'Fake Space', location: 'Fake City' }],
+      '/bookings': [],
+      '/users/me': {
+        id: 1,
+        email: 'dev@example.com',
+        full_name: 'Dev User',
+        role: 'admin',
+        status: 'active',
+        joined_at: new Date().toISOString(),
       },
-    });
+      // Thêm các endpoint khác nếu FE gọi
+    };
 
-    return this.handleResponse<T>(response, hadToken);
+    // Nếu path có trong fakeData, trả dữ liệu ngay
+    if (path in fakeData) {
+      return fakeData[path] as T;
+    }
+
+    // Nếu path chưa fake, trả về empty object để FE không crash
+    return {} as T;
   }
 
   async get<T>(
