@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, time, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
@@ -19,9 +19,94 @@ from app.schemas import (
     CreateBookingRequest,
     UpdateBookingStatusRequest,
 )
+from app.schemas.booking import HourlyOccupancy, RoomScheduleResponse
 from app.schemas.common import PaginatedResponse, PaginatedResponseMeta
 
 router = APIRouter()
+
+
+@router.get("/schedule/{space_id}", response_model=RoomScheduleResponse)
+async def get_room_schedule(
+    space_id: int,
+    db: Annotated[AsyncSession, Depends(get_async_db)],
+    query_date: date = Query(..., alias="date", description="Date in YYYY-MM-DD format")
+):
+    """Get 24-hour room schedule for a specific date (ROMS-compatible).
+    
+    Returns an array of 24 hourly slots (0-23) with occupancy information for the specified space and date.
+    This endpoint is compatible with the ROMS (Room Management Service) schedule format.
+    """
+    # Verify space exists
+    space_result = await db.execute(
+        select(Space).where(Space.id == space_id)
+    )
+    space = space_result.scalar_one_or_none()
+
+    if not space:
+        raise NotFoundException(detail="Space not found")
+
+    # Query all approved and pending bookings for this space and date
+    bookings_result = await db.execute(
+        select(Booking)
+        .where(
+            and_(
+                Booking.space_id == space_id,
+                Booking.booking_date == query_date,
+                Booking.status.in_([BookingStatus.PENDING, BookingStatus.APPROVED])
+            )
+        )
+        .options(
+            selectinload(Booking.space).selectinload(Space.utilities),
+            selectinload(Booking.user)
+        )
+        .order_by(Booking.start_time)
+    )
+    bookings = bookings_result.scalars().all()
+
+    # Build 24-hour occupancy array
+    occupancy = []
+    
+    for hour in range(24):
+        # Create full datetime objects for the slot start and end
+        # e.g., 2023-10-31 08:00:00 to 2023-10-31 09:00:00
+        slot_start_dt = datetime.combine(query_date, time(hour, 0))
+        slot_end_dt = slot_start_dt + timedelta(hours=1)
+
+        bookings_in_hour = []
+
+        for b in bookings:
+            # Convert booking times to datetimes on the query date
+            b_start_dt = datetime.combine(query_date, b.start_time)
+            b_end_dt = datetime.combine(query_date, b.end_time)
+
+            if b.end_time < b.start_time:
+                b_end_dt += timedelta(days=1)
+            
+            if b.end_time == time(0, 0) and b.start_time != time(0, 0):
+                 b_end_dt += timedelta(days=1)
+
+            latest_start = max(slot_start_dt, b_start_dt)
+            earliest_end = min(slot_end_dt, b_end_dt)
+
+            if latest_start < earliest_end:
+                bookings_in_hour.append(b)
+
+        hourly_slot = HourlyOccupancy(
+            hour=hour,
+            is_occupied=len(bookings_in_hour) > 0,
+            bookings=[
+                BookingResponse.from_orm_with_relations(b)
+                for b in bookings_in_hour
+            ]
+        )
+        occupancy.append(hourly_slot)
+
+    return RoomScheduleResponse(
+        space_id=space_id,
+        date=query_date,
+        occupancy=occupancy,
+        total_bookings=len(bookings)
+    )
 
 
 @router.get("", response_model=PaginatedResponse[BookingResponse])

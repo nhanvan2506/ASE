@@ -87,3 +87,23 @@ class UpdateBookingStatusRequest(BaseModel):
     """Request schema for updating booking status."""
     status: BookingStatus
     cancellation_reason: str | None = None
+
+
+class HourlyOccupancy(BaseModel):
+    """Hourly occupancy slot in schedule."""
+    hour: int = Field(ge=0, le=23, description="Hour of the day (0-23)")
+    is_occupied: bool = Field(description="Whether the hour slot is occupied")
+    bookings: list["BookingResponse"] = Field(default_factory=list, description="Bookings in this hour")
+
+    model_config = {"from_attributes": True}
+
+
+class RoomScheduleResponse(BaseModel):
+    """Room schedule response (ROMS-compatible format)."""
+    space_id: int
+    date: date
+    occupancy: list[HourlyOccupancy] = Field(description="24-hour occupancy information")
+    total_bookings: int = Field(description="Total number of bookings for this date")
+
+    model_config = {"from_attributes": True}
+
