@@ -4,6 +4,7 @@ import enum
 class UserRole(str, enum.Enum):
     """User role types."""
     STUDENT = "student"
+    LECTURER = "lecturer"
     ADMIN = "admin"
 
 

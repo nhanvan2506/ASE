@@ -84,3 +84,26 @@ class UpdateSpaceRequest(BaseModel):
     image_url: str | None = None
     status: SpaceStatus | None = None
     utilities: list[str] | None = None
+
+
+class ScheduleSlotResponse(BaseModel):
+    """Schedule slot response schema."""
+    hour: int = Field(ge=0, le=23, description="Hour of the day (0-23)")
+    is_occupied: bool = Field(description="Whether this hour slot is occupied")
+    booking_id: int | None = Field(default=None, description="Booking ID if occupied")
+    start_time: str | None = Field(default=None, description="Start time of booking (HH:MM)")
+    end_time: str | None = Field(default=None, description="End time of booking (HH:MM)")
+    status: str | None = Field(default=None, description="Booking status")
+    lecturer_name: str | None = Field(default=None, description="Lecturer name")
+
+    model_config = {"from_attributes": True}
+
+
+class RoomScheduleResponse(BaseModel):
+    """Room schedule response schema for a specific date."""
+    space_id: int
+    space_name: str
+    date: str = Field(description="Date in YYYY-MM-DD format")
+    schedule: list[ScheduleSlotResponse] = Field(description="24-hour schedule slots")
+
+    model_config = {"from_attributes": True}

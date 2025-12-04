@@ -1,0 +1,20 @@
+alembic
+asyncpg
+bcrypt
+fastapi
+httpx
+loguru
+psycopg[binary]
+pydantic-settings
+pydantic[email]
+pyjwt
+python-dotenv
+python-multipart
+sqlalchemy
+tiktoken
+
+# Dev / test dependencies
+pytest
+pytest-asyncio
+
+

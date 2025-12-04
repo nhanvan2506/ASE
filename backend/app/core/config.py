@@ -1,6 +1,7 @@
 from dotenv import load_dotenv, find_dotenv
 from pydantic_settings import BaseSettings
 import secrets
+from urllib.parse import quote_plus
 
 load_dotenv(find_dotenv(".env"), override=True)
 
@@ -19,16 +20,32 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "study_space"
+    # SSL mode for cloud databases (e.g., Supabase). Options: disable, require, verify-ca, verify-full
+    POSTGRES_SSL_MODE: str = "disable"
     
     @property
     def DATABASE_URL(self) -> str:
         """Synchronous database URL for SQLAlchemy (using psycopg)"""
-        return f"postgresql+psycopg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        # URL encode user and password to handle special characters
+        user = quote_plus(self.POSTGRES_USER)
+        password = quote_plus(self.POSTGRES_PASSWORD)
+        db_name = quote_plus(self.POSTGRES_DB)
+        url = f"postgresql+psycopg://{user}:{password}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{db_name}"
+        if self.POSTGRES_SSL_MODE != "disable":
+            url += f"?sslmode={self.POSTGRES_SSL_MODE}"
+        return url
     
     @property
     def ASYNC_DATABASE_URL(self) -> str:
         """Asynchronous database URL for SQLAlchemy (using asyncpg)"""
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        # URL encode user and password to handle special characters
+        user = quote_plus(self.POSTGRES_USER)
+        password = quote_plus(self.POSTGRES_PASSWORD)
+        db_name = quote_plus(self.POSTGRES_DB)
+        url = f"postgresql+asyncpg://{user}:{password}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{db_name}"
+        if self.POSTGRES_SSL_MODE != "disable":
+            url += f"?ssl=require"
+        return url
 
     class Config:
         case_sensitive = True

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, Request
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,6 +12,7 @@ from app.core.exceptions import (
     ForbiddenException,
     BadRequestException,
 )
+from app.core.audit_log import log_audit_event, AuditAction
 from app.dependencies import get_current_active_user, get_current_admin_user
 from app.models import Booking, Space, User, BookingStatus, UserRole
 from app.schemas import (
@@ -80,6 +81,7 @@ async def list_bookings(
 async def get_booking(
     booking_id: int,
     current_user: Annotated[User, Depends(get_current_active_user)],
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_async_db)]
 ):
     """Get booking details."""
@@ -95,7 +97,31 @@ async def get_booking(
 
     # Non-admin can only view their own bookings
     if current_user.role != UserRole.ADMIN and booking.user_id != current_user.id:
+        # Log unauthorized access attempt
+        await log_audit_event(
+            db=db,
+            action=AuditAction.UNAUTHORIZED_ACCESS,
+            user_id=current_user.id,
+            resource_type="booking",
+            resource_id=booking_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            details=f"Attempted to view booking {booking_id}",
+            status="failed"
+        )
         raise ForbiddenException(detail="Not allowed to view this booking")
+
+    # Log successful access
+    await log_audit_event(
+        db=db,
+        action=AuditAction.BOOKING_VIEWED,
+        user_id=current_user.id,
+        resource_type="booking",
+        resource_id=booking_id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        status="success"
+    )
 
     return BookingResponse.from_orm_with_relations(booking)
 
@@ -104,9 +130,24 @@ async def get_booking(
 async def create_booking(
     request: CreateBookingRequest,
     current_user: Annotated[User, Depends(get_current_active_user)],
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_async_db)]
 ):
-    """Create a new booking request."""
+    """Create a new booking request. Only lecturers and admins can create bookings."""
+    # Only lecturers and admins can create bookings
+    if current_user.role not in [UserRole.LECTURER, UserRole.ADMIN]:
+        # Log unauthorized booking attempt
+        await log_audit_event(
+            db=db,
+            action=AuditAction.UNAUTHORIZED_ACCESS,
+            user_id=current_user.id,
+            resource_type="booking",
+            ip_address=http_request.client.host if http_request.client else None,
+            user_agent=http_request.headers.get("user-agent"),
+            details=f"Attempted to create booking for space {request.space_id}",
+            status="failed"
+        )
+        raise ForbiddenException(detail="Only lecturers and admins can create bookings")
     # Verify space exists and is active
     space_result = await db.execute(
         select(Space).where(Space.id == request.space_id).options(selectinload(Space.utilities))
@@ -157,6 +198,19 @@ async def create_booking(
     db.add(booking)
     await db.flush()
 
+    # Log booking creation (audit trail for security)
+    await log_audit_event(
+        db=db,
+        action=AuditAction.BOOKING_CREATED,
+        user_id=current_user.id,
+        resource_type="booking",
+        resource_id=booking.id,
+        ip_address=http_request.client.host if http_request.client else None,
+        user_agent=http_request.headers.get("user-agent"),
+        details=f"Created booking for space {request.space_id} on {request.booking_date}",
+        status="success"
+    )
+
     # Reload with relations
     query = select(Booking).where(Booking.id == booking.id).options(
         selectinload(Booking.space).selectinload(Space.utilities),
@@ -173,6 +227,7 @@ async def update_booking(
     booking_id: int,
     request: UpdateBookingStatusRequest,
     current_user: Annotated[User, Depends(get_current_active_user)],
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_async_db)]
 ):
     """Update booking status (approve/reject/cancel/etc.)."""
@@ -210,6 +265,27 @@ async def update_booking(
         booking.approved_at = datetime.now(timezone.utc)
 
     await db.flush()
+    
+    # Log booking update (audit trail for security)
+    action_map = {
+        BookingStatus.APPROVED: AuditAction.BOOKING_APPROVED,
+        BookingStatus.REJECTED: AuditAction.BOOKING_REJECTED,
+        BookingStatus.CANCELLED: AuditAction.BOOKING_CANCELLED,
+    }
+    audit_action = action_map.get(request.status, AuditAction.BOOKING_UPDATED)
+    
+    await log_audit_event(
+        db=db,
+        action=audit_action,
+        user_id=current_user.id,
+        resource_type="booking",
+        resource_id=booking_id,
+        ip_address=http_request.client.host if http_request.client else None,
+        user_agent=http_request.headers.get("user-agent"),
+        details=f"Updated booking status to {request.status.value}",
+        status="success"
+    )
+    
     await db.refresh(booking)
 
     return BookingResponse.from_orm_with_relations(booking)

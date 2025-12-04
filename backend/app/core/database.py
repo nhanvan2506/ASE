@@ -2,9 +2,23 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import Session, sessionmaker, DeclarativeBase
 from typing import AsyncGenerator
+import ssl
 
 from app.core.config import settings
 
+# SSL configuration for asyncpg (Supabase requires SSL)
+connect_args = {}
+if settings.POSTGRES_SSL_MODE != "disable":
+    # Supabase requires SSL connection but may have certificate issues
+    # For development, we can disable certificate verification
+    # In production, you should use proper SSL certificates
+    ssl_context = ssl.create_default_context()
+    if settings.POSTGRES_SSL_MODE in ["require", "prefer"]:
+        # Disable certificate verification for development
+        # WARNING: This is not secure for production!
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+    connect_args["ssl"] = ssl_context
 
 async_engine = create_async_engine(
     settings.ASYNC_DATABASE_URL,
@@ -12,6 +26,7 @@ async_engine = create_async_engine(
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
+    connect_args=connect_args,
 )
 
 AsyncSessionLocal = async_sessionmaker(

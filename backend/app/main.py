@@ -1,9 +1,10 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.rate_limit import RateLimitMiddleware
 from app.routes import api_router
 
 
@@ -21,6 +22,9 @@ app = FastAPI(
     description="REST API for the Study Space booking system",
     lifespan=lifespan,
 )
+
+# Rate limiting middleware (security measure)
+app.add_middleware(RateLimitMiddleware)
 
 # CORS middleware
 app.add_middleware(
