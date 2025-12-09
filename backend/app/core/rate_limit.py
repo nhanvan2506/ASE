@@ -20,7 +20,7 @@ class RateLimiter:
     def is_allowed(
         self, 
         identifier: str, 
-        max_requests: int = 10, 
+        max_requests: int = 30, 
         window_seconds: int = 60
     ) -> Tuple[bool, int]:
         """
