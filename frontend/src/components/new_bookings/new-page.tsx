@@ -23,57 +23,55 @@ export function NewBookingsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [existingBookings, setExistingBookings] = useState<Record<number, BookingSlot[]>>({})
 
-  useEffect(() => {
-    if (!user) return
+useEffect(() => {
+  if (!user) return
 
-    // Fake rooms
-    const fakeRooms: Room[] = [
-      {
-        id: 1,
-        name: "Phòng học A101",
-        image: "https://images.unsplash.com/photo-1571260899304-425eee4c7efc?w=800&auto=format&fit=crop",
-        building: "Tòa nhà A",
-        floor: "Tầng 1",
-        capacity: 30,
-        utilities: ["Máy chiếu", "WiFi", "Bảng trắng"],
-      },
-      {
-        id: 2,
-        name: "Phòng học B202",
-        image: "https://images.unsplash.com/photo-1581091215368-4b95ca45d2a0?w=800&auto=format&fit=crop",
-        building: "Tòa nhà B",
-        floor: "Tầng 2",
-        capacity: 25,
-        utilities: ["WiFi", "Điều hòa"],
-      },
-      {
-        id: 3,
-        name: "Phòng học C303",
-        image: "https://images.unsplash.com/photo-1581091870622-2f1b7b5f3e12?w=800&auto=format&fit=crop",
-        building: "Tòa nhà C",
-        floor: "Tầng 3",
-        capacity: 20,
-        utilities: ["Máy chiếu", "WiFi"],
-      },
-    ]
-    setRooms(fakeRooms)
+  const fakeRooms: Room[] = [
+    {
+      id: 1,
+      name: "Phòng học A101",
+      image: "https://images.unsplash.com/photo-1571260899304-425eee4c7efc?w=800&auto=format&fit=crop",
+      building: "Tòa nhà A",
+      floor: "Tầng 1",
+      capacity: 30,
+      utilities: ["Máy chiếu", "WiFi", "Bảng trắng"],
+    },
+    {
+      id: 2,
+      name: "Phòng học B202",
+      image: "https://images.unsplash.com/photo-1581091215368-4b95ca45d2a0?w=800&auto=format&fit=crop",
+      building: "Tòa nhà B",
+      floor: "Tầng 2",
+      capacity: 25,
+      utilities: ["WiFi", "Điều hòa"],
+    },
+    {
+      id: 3,
+      name: "Phòng học C303",
+      image: "https://images.unsplash.com/photo-1581091870622-2f1b7b5f3e12?w=800&auto=format&fit=crop",
+      building: "Tòa nhà C",
+      floor: "Tầng 3",
+      capacity: 20,
+      utilities: ["Máy chiếu", "WiFi"],
+    },
+  ]
 
-    // Fake existing bookings for each room
-    const fakeBookings: Record<number, BookingSlot[]> = {
-      1: [
-        { date: "2025-12-01", start: "09:00", end: "11:00" },
-        { date: "2025-12-01", start: "14:00", end: "16:00" },
-      ],
-      2: [
-        { date: "2025-12-01", start: "08:00", end: "10:00" },
-        { date: "2025-12-02", start: "13:00", end: "15:00" },
-      ],
-      3: [
-        { date: "2025-12-01", start: "10:00", end: "12:00" },
-      ],
-    }
-    setExistingBookings(fakeBookings)
-  }, [user])
+  const fakeBookings: Record<number, BookingSlot[]> = {
+    1: [
+      { date: "2025-12-01", start: "09:00", end: "11:00" },
+      { date: "2025-12-01", start: "14:00", end: "16:00" },
+    ],
+    2: [
+      { date: "2025-12-01", start: "08:00", end: "10:00" },
+      { date: "2025-12-02", start: "13:00", end: "15:00" },
+    ],
+    3: [{ date: "2025-12-01", start: "10:00", end: "12:00" }],
+  }
+
+  setRooms(fakeRooms)
+  setExistingBookings(fakeBookings)
+}, [!!user])
+
 
   const handleRegisterClick = (room: Room) => {
     setSelectedRoom(room)

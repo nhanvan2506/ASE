@@ -307,6 +307,15 @@ export function Header() {
                         Đăng ký phòng
                       </Link>
                     </li>
+                    <li>
+                      <Link
+                        href="/timetable"
+                        className="block text-white hover:opacity-80 transition-opacity font-bold"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        Thời khóa biểu
+                      </Link>
+                    </li>
                     {isAdmin && (
                       <li>
                         <Link href="/admin" className="text-white hover:opacity-80 transition-opacity">
@@ -426,6 +435,15 @@ export function Header() {
                       Đăng ký phòng
                     </Link>
                   </li>
+                    <li>
+                      <Link
+                        href="/timetable"
+                        className="block text-white hover:opacity-80 transition-opacity font-bold"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        Thời khóa biểu
+                      </Link>
+                    </li>
                   {isAdmin && (
                     <li>
                       <Link

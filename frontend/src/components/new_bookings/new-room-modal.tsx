@@ -4,6 +4,9 @@
 import { useState, useEffect } from "react"
 import { Room } from "./room-card"
 import { toast } from "sonner"
+import DatePicker from "react-datepicker"
+import "react-datepicker/dist/react-datepicker.css"
+import { format } from "date-fns"
 
 export interface BookingSlot {
   date: string // YYYY-MM-DD
@@ -26,54 +29,69 @@ export function NewRoomModal({
   existingBookings = [],
   onBookingConfirmed,
 }: NewRoomModalProps) {
-  const [selectedDate, setSelectedDate] = useState("")
+
+  // --- STATE ---
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [selectedStart, setSelectedStart] = useState("")
   const [selectedEnd, setSelectedEnd] = useState("")
   const [availableSlots, setAvailableSlots] = useState<BookingSlot[]>([])
 
+  // Reset khi mở modal
   useEffect(() => {
     if (!room || !isOpen) return
-    // Reset selections khi mở modal
-    setSelectedDate("")
+    setSelectedDate(null)
     setSelectedStart("")
     setSelectedEnd("")
-    setAvailableSlots(existingBookings)
-  }, [room, isOpen, existingBookings])
+    setAvailableSlots([])
+  }, [room, isOpen])
 
   if (!isOpen || !room) return null
 
-  // Demo: tạo khung giờ trống 8:00 - 17:00 mỗi 1 tiếng
-  const generateTimeSlots = () => {
+  // Tạo slot trống theo giờ cố định
+  const generateTimeSlots = (dateStr: string) => {
     const slots: BookingSlot[] = []
-    const date = selectedDate || new Date().toISOString().split("T")[0]
-    for (let hour = 8; hour < 17; hour++) {
-      const start = hour.toString().padStart(2, "0") + ":00"
-      const end = (hour + 1).toString().padStart(2, "0") + ":00"
-      // Nếu chưa được book
+
+    for (let hour = 10; hour < 17; hour++) {
+      const start = `${hour.toString().padStart(2, "0")}:00`
+      const end = `${(hour + 1).toString().padStart(2, "0")}:00`
+
       const conflict = existingBookings.find(
-        (b) => b.date === date && !(end <= b.start || start >= b.end)
+        (b) => b.date === dateStr && !(end <= b.start || start >= b.end)
       )
-      if (!conflict) slots.push({ date, start, end })
+
+      if (!conflict) slots.push({ date: dateStr, start, end })
     }
+
     return slots
   }
 
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSelectedDate(e.target.value)
-    setAvailableSlots(generateTimeSlots())
+  // Khi chọn ngày
+  const handleDateChange = (date: Date | null) => {
+    setSelectedDate(date)
     setSelectedStart("")
     setSelectedEnd("")
+
+    if (date) {
+      const dateStr = format(date, "yyyy-MM-dd")
+      const available = generateTimeSlots(dateStr)
+      setAvailableSlots(available)
+    } else {
+      setAvailableSlots([])
+    }
   }
 
+  // Đăng ký
   const handleRegister = () => {
     if (!selectedDate || !selectedStart || !selectedEnd) {
       toast.error("Vui lòng chọn ngày và khung giờ!")
       return
     }
 
-    const slot = { date: selectedDate, start: selectedStart, end: selectedEnd }
-    onBookingConfirmed(room, slot) // <-- Gọi prop từ cha
-    toast.success(`Đăng ký ${room.name} thành công từ ${selectedStart} đến ${selectedEnd} ngày ${selectedDate}`)
+    const dateStr = format(selectedDate, "yyyy-MM-dd")
+    const slot = { date: dateStr, start: selectedStart, end: selectedEnd }
+
+    onBookingConfirmed(room, slot)
+    toast.success(`Đăng ký ${room.name} thành công!`)
     onClose()
   }
 
@@ -94,11 +112,14 @@ export function NewRoomModal({
         {/* Chọn ngày */}
         <div className="mb-4 text-left">
           <label className="block mb-1 font-semibold">Chọn ngày:</label>
-          <input
-            type="date"
-            className="w-full border rounded px-3 py-2"
-            value={selectedDate}
+
+          <DatePicker
+            selected={selectedDate}
             onChange={handleDateChange}
+            dateFormat="dd/MM/yyyy"
+            className="w-full border rounded px-3 py-2"
+            placeholderText="dd/mm/yyyy"
+            shouldCloseOnSelect
           />
         </div>
 
@@ -106,11 +127,13 @@ export function NewRoomModal({
         <div className="mb-4 text-left">
           <label className="block mb-1 font-semibold">Chọn khung giờ trống:</label>
           <div className="grid grid-cols-2 gap-2">
-            {generateTimeSlots().map((slot) => (
+            {availableSlots.map((slot) => (
               <button
                 key={slot.start}
                 className={`py-2 px-2 rounded border ${
-                  selectedStart === slot.start ? "bg-blue-600 text-white" : "bg-gray-100"
+                  selectedStart === slot.start
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100"
                 }`}
                 onClick={() => {
                   setSelectedStart(slot.start)
@@ -120,13 +143,15 @@ export function NewRoomModal({
                 {slot.start} - {slot.end}
               </button>
             ))}
-            {generateTimeSlots().length === 0 && (
-              <p className="text-sm text-muted-foreground col-span-2">Không còn khung giờ trống</p>
+
+            {availableSlots.length === 0 && (
+              <p className="text-sm text-muted-foreground col-span-2">
+                Không còn khung giờ trống
+              </p>
             )}
           </div>
         </div>
 
-        {/* Nút đăng ký */}
         <button
           onClick={handleRegister}
           className="w-full py-3 mt-4 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700"
@@ -134,7 +159,6 @@ export function NewRoomModal({
           Xác nhận đăng ký
         </button>
 
-        {/* Close button */}
         <button
           onClick={onClose}
           className="mt-3 text-gray-500 hover:text-black underline"
@@ -145,3 +169,4 @@ export function NewRoomModal({
     </div>
   )
 }
+
