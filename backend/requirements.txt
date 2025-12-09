@@ -12,7 +12,7 @@ python-dotenv
 python-multipart
 sqlalchemy
 tiktoken
-
+uvicorn[standard]
 # Dev / test dependencies
 pytest
 pytest-asyncio

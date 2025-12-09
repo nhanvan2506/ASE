@@ -8,6 +8,8 @@ load_dotenv(find_dotenv(".env"), override=True)
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Study Space"
     PROJECT_VERSION: str = "1.0.0"
+    # Feature flags
+    ENABLE_AUDIT_LOGS: bool = False
 
     # JWT Settings
     SECRET_KEY: str = secrets.token_urlsafe(32)

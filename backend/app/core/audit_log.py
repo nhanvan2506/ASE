@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import Base
+from app.core.config import settings
 
 
 class AuditAction(str, Enum):
@@ -65,7 +66,9 @@ async def log_audit_event(
     details: Optional[str] = None,
     status: str = "success"
 ):
-    """Log an audit event."""
+    """Log an audit event. Returns immediately if audit logging is disabled."""
+    if not settings.ENABLE_AUDIT_LOGS:
+        return
     audit_log = AuditLog(
         action=action,
         user_id=user_id,
