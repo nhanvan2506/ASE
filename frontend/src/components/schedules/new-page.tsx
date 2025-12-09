@@ -5,10 +5,6 @@ import { Footer } from "@/components/landing/footer"
 import { TimeTable } from "./time-table"
 import { Room } from "../new_bookings/room-card"
 
-/* =========================
-   MOCK DATA (tạm thời)
-========================= */
-
 const rooms: Room[] = [
   {
     id: 1,
@@ -44,7 +40,6 @@ const bookings = [
     end: "15:00",
   },
 ]
-
 
 export function TimeTablePage() {
   return (
