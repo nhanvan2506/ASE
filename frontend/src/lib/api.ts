@@ -1,12 +1,12 @@
 // API Client with Authorization
-import type { ApiError } from '@/schemas/api';
+import type { ApiError } from "@/schemas/api";
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const TOKEN_KEY = 'access_token';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const TOKEN_KEY = "access_token";
 
 // ============================================================================
 // Token Management
@@ -14,17 +14,17 @@ const TOKEN_KEY = 'access_token';
 
 export const TokenManager = {
   get: (): string | null => {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === "undefined") return null;
     return localStorage.getItem(TOKEN_KEY);
   },
 
   set: (token: string): void => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     localStorage.setItem(TOKEN_KEY, token);
   },
 
   remove: (): void => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     localStorage.removeItem(TOKEN_KEY);
   },
 
@@ -44,7 +44,7 @@ export class ApiException extends Error {
 
   constructor(error: ApiError, statusCode: number) {
     super(error.message);
-    this.name = 'ApiException';
+    this.name = "ApiException";
     this.code = error.code;
     this.statusCode = statusCode;
     this.details = error.details ?? undefined;
@@ -70,12 +70,15 @@ class ApiClient {
   private buildURL(path: string, params?: Record<string, any>): string {
     // Handle relative URLs (like /api)
     let url: URL;
-    if (this.baseURL.startsWith('http://') || this.baseURL.startsWith('https://')) {
+    if (
+      this.baseURL.startsWith("http://") ||
+      this.baseURL.startsWith("https://")
+    ) {
       url = new URL(path, this.baseURL);
     } else {
       // For relative base URLs, construct relative path with query params
       const fullPath = `${this.baseURL}${path}`;
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         url = new URL(fullPath, window.location.origin);
       } else {
         // Server-side: return relative URL string
@@ -101,7 +104,10 @@ class ApiClient {
     }
 
     // Return relative URL for client-side
-    if (!this.baseURL.startsWith('http://') && !this.baseURL.startsWith('https://')) {
+    if (
+      !this.baseURL.startsWith("http://") &&
+      !this.baseURL.startsWith("https://")
+    ) {
       return url.pathname + url.search;
     }
 
@@ -110,7 +116,7 @@ class ApiClient {
 
   private getHeaders(requiresAuth: boolean = false): HeadersInit {
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     };
 
     if (requiresAuth) {
@@ -123,21 +129,24 @@ class ApiClient {
     return headers;
   }
 
-  private async handleResponse<T>(response: Response, hadToken: boolean): Promise<T> {
+  private async handleResponse<T>(
+    response: Response,
+    hadToken: boolean
+  ): Promise<T> {
     // Handle 204 No Content
     if (response.status === 204) {
       return undefined as T;
     }
 
-    const contentType = response.headers.get('content-type');
-    const isJson = contentType?.includes('application/json');
+    const contentType = response.headers.get("content-type");
+    const isJson = contentType?.includes("application/json");
 
     // If not JSON, return text or throw error
     if (!isJson) {
       if (!response.ok) {
         throw new ApiException(
           {
-            code: 'UNKNOWN_ERROR',
+            code: "UNKNOWN_ERROR",
             message: `HTTP ${response.status}: ${response.statusText}`,
           },
           response.status
@@ -157,8 +166,8 @@ class ApiClient {
       if (response.status === 401 && hadToken) {
         TokenManager.remove();
         // Dispatch custom event for components to handle navigation
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("auth:unauthorized"));
         }
       }
 
@@ -227,7 +236,7 @@ class ApiClient {
     requiresAuth: boolean = false
   ): Promise<T> {
     return this.request<T>(path, {
-      method: 'GET',
+      method: "GET",
       params,
       requiresAuth,
     });
@@ -239,7 +248,7 @@ class ApiClient {
     requiresAuth: boolean = false
   ): Promise<T> {
     return this.request<T>(path, {
-      method: 'POST',
+      method: "POST",
       body: body ? JSON.stringify(body) : undefined,
       requiresAuth,
     });
@@ -251,18 +260,15 @@ class ApiClient {
     requiresAuth: boolean = false
   ): Promise<T> {
     return this.request<T>(path, {
-      method: 'PATCH',
+      method: "PATCH",
       body: body ? JSON.stringify(body) : undefined,
       requiresAuth,
     });
   }
 
-  async delete<T>(
-    path: string,
-    requiresAuth: boolean = false
-  ): Promise<T> {
+  async delete<T>(path: string, requiresAuth: boolean = false): Promise<T> {
     return this.request<T>(path, {
-      method: 'DELETE',
+      method: "DELETE",
       requiresAuth,
     });
   }
