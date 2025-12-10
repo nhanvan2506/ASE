@@ -26,7 +26,7 @@ export function WhyChooseSection() {
           className="text-3xl md:text-4xl lg:text-5xl font-bold mb-14 text-foreground"
           style={{ fontFamily: 'var(--font-heading, Orbitron, sans-serif)' }}
         >
-          Why choose Study Space?
+          Why choose SCAMS?
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-7 text-left">
           {features.map((feature, index) => {
