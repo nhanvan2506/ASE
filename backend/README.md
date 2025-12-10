@@ -5,12 +5,14 @@
 ### 1. Create virtual environment
 
 **Windows:**
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\activate
 ```
 
 **Linux/Mac:**
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -63,4 +65,3 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
-

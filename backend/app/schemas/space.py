@@ -99,11 +99,46 @@ class ScheduleSlotResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DailyScheduleResponse(BaseModel):
+    """Daily schedule for a single day."""
+    date: str = Field(description="Date in YYYY-MM-DD format")
+    schedule: list[ScheduleSlotResponse] = Field(description="24-hour schedule slots")
+
+    model_config = {"from_attributes": True}
+
+
 class RoomScheduleResponse(BaseModel):
     """Room schedule response schema for a specific date."""
     space_id: int
     space_name: str
     date: str = Field(description="Date in YYYY-MM-DD format")
     schedule: list[ScheduleSlotResponse] = Field(description="24-hour schedule slots")
+
+    model_config = {"from_attributes": True}
+
+
+class WeeklySpaceScheduleResponse(BaseModel):
+    """Weekly schedule for a single space (Mon-Sun)."""
+    space_id: int
+    space_name: str
+    capacity: int
+    building: str
+    floor: str
+    week_number: int = Field(description="ISO week number (1-53)")
+    year: int = Field(description="Year")
+    start_date: str = Field(description="Monday date (YYYY-MM-DD)")
+    end_date: str = Field(description="Sunday date (YYYY-MM-DD)")
+    weekly_schedule: list[DailyScheduleResponse] = Field(description="7-day schedule (Mon-Sun)")
+
+    model_config = {"from_attributes": True}
+
+
+class WeeklyScheduleResponse(BaseModel):
+    """Weekly schedule response for all spaces."""
+    week_number: int = Field(description="ISO week number (1-53)")
+    year: int = Field(description="Year")
+    start_date: str = Field(description="Monday date (YYYY-MM-DD)")
+    end_date: str = Field(description="Sunday date (YYYY-MM-DD)")
+    spaces: list[WeeklySpaceScheduleResponse] = Field(description="Schedule for each space")
 
     model_config = {"from_attributes": True}
