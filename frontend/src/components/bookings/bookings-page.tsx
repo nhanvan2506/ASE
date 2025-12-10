@@ -145,7 +145,7 @@ export function BookingsPage() {
                 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-4 text-white"
                 style={{ fontFamily: 'var(--font-heading, Orbitron, sans-serif)' }}
               >
-                My space!
+                My Schedules!
               </h1>
               <p className="text-lg md:text-xl font-light text-white/90 max-w-[600px] mx-auto">
                 Keep track of all the classrooms you&apos;ve booked in one place.

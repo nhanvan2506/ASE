@@ -86,21 +86,28 @@ export function BookingModal({ room, isOpen, onClose, onConfirm }: BookingModalP
   const monthNames = ["January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"]
 
-  const timeSlots = [
-    "07:00 - 08:00",
-    "08:00 - 09:00",
-    "09:00 - 10:00",
-    "10:00 - 11:00",
-    "11:00 - 12:00",
-    "12:00 - 13:00",
-    "13:00 - 14:00",
-    "14:00 - 15:00",
-    "15:00 - 16:00",
-  ]
+  // Generate rounded-hour time slots from 7 AM to 9 PM
+  const timeSlots = Array.from({ length: 14 }, (_, i) => {
+    const startHour = i + 7 // Start from 7 AM
+    const endHour = startHour + 1
+    return `${startHour.toString().padStart(2, '0')}:00 - ${endHour.toString().padStart(2, '0')}:00`
+  })
 
   const handleConfirm = async () => {
     if (!selectedDate || !selectedTimeSlot || !attendees || !purpose) {
       toast.error("Please fill in all required fields")
+      return
+    }
+
+    // Validate attendees
+    const attendeesNum = parseInt(attendees)
+    if (isNaN(attendeesNum) || attendeesNum < 1) {
+      toast.error("Number of attendees must be at least 1")
+      return
+    }
+
+    if (attendeesNum > room.capacity) {
+      toast.error(`Number of attendees (${attendeesNum}) exceeds room capacity (${room.capacity})`)
       return
     }
 
@@ -118,14 +125,14 @@ export function BookingModal({ room, isOpen, onClose, onConfirm }: BookingModalP
         booking_date: bookingDate,
         start_time: startTime,
         end_time: endTime,
-        attendees: parseInt(attendees),
+        attendees: attendeesNum,
         purpose,
       })
 
       toast.success(
         `Successfully booked ${room.name}!`,
         {
-          description: `${bookingDate} at ${selectedTimeSlot} for ${attendees} attendees`,
+          description: `${bookingDate} at ${selectedTimeSlot} for ${attendeesNum} attendees`,
           duration: 5000,
         }
       )
@@ -316,8 +323,11 @@ export function BookingModal({ room, isOpen, onClose, onConfirm }: BookingModalP
           <div>
             <h3 className="text-xl mb-4 text-foreground font-bold">
               Select time slot <span className="text-red-500">*</span>
+              <span className="text-xs font-normal text-muted-foreground block mt-1">
+                Only rounded-hour slots available (e.g., 08:00-09:00)
+              </span>
             </h3>
-            <div className="grid grid-cols-3 gap-2 mb-6">
+            <div className="grid grid-cols-3 gap-2 mb-6 max-h-[200px] overflow-y-auto">
               {timeSlots.map((slot) => (
                 <button
                   key={slot}
@@ -346,9 +356,16 @@ export function BookingModal({ room, isOpen, onClose, onConfirm }: BookingModalP
                   id="attendees"
                   value={attendees}
                   onChange={(e) => setAttendees(e.target.value)}
-                  placeholder="Enter number of people..."
+                  min="1"
+                  max={room.capacity}
+                  placeholder={`Enter 1-${room.capacity} attendees...`}
                   className="w-full px-4 py-3 rounded-lg border border-border bg-muted text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary font-medium"
                 />
+                {attendees && parseInt(attendees) > room.capacity && (
+                  <p className="text-red-500 text-sm mt-1">
+                    Exceeds room capacity ({room.capacity})
+                  </p>
+                )}
               </div>
 
               <div>

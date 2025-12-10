@@ -59,6 +59,11 @@ export function Header() {
                       </Link>
                     </li>
                     <li>
+                      <Link href="/bookings" className="text-white hover:opacity-80 transition-opacity">
+                        Bookings
+                      </Link>
+                    </li>
+                    <li>
 
                       <Link
                         href="/schedules"
@@ -160,6 +165,15 @@ export function Header() {
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       Profile
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      href="/bookings"
+                      className="block text-white hover:opacity-80 transition-opacity font-bold"
+                      onClick={() => setMobileMenuOpen(false)}
+                    >
+                      Bookings
                     </Link>
                   </li>
                   <li>

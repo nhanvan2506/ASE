@@ -26,15 +26,18 @@ pip install -r requirements.txt
 
 ### 3. File `.env`
 
-#### Supabase PostgreSQL Cloud
+#### Neon PostgreSQL Cloud
 
 ```env
-# Supabase Database Configuration
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=your_supabase_password
-POSTGRES_HOST=db.xxxxx.supabase.co
+# Neon Database Configuration
+# Example connection string from Neon:
+# postgresql://USER:PASSWORD@ep-xxxx.aws.neon.tech/neondb?sslmode=require
+
+POSTGRES_USER=neondb_owner
+POSTGRES_PASSWORD=your_neon_password
+POSTGRES_HOST=ep-xxxx.aws.neon.tech
 POSTGRES_PORT=5432
-POSTGRES_DB=postgres
+POSTGRES_DB=neondb
 POSTGRES_SSL_MODE=require
 ```
 

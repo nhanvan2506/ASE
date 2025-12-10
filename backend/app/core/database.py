@@ -6,7 +6,7 @@ import ssl
 
 from app.core.config import settings
 
-# SSL configuration for asyncpg (Supabase requires SSL)
+# SSL configuration for asyncpg (cloud providers like Neon/Supabase require SSL)
 connect_args = {}
 if settings.POSTGRES_SSL_MODE != "disable":
     # Supabase requires SSL connection but may have certificate issues

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "study_space"
-    # SSL mode for cloud databases (e.g., Supabase). Options: disable, require, verify-ca, verify-full
+    # SSL mode for cloud databases (e.g., Neon, Supabase). Options: disable, require, verify-ca, verify-full
     POSTGRES_SSL_MODE: str = "disable"
     
     @property
