@@ -3,9 +3,9 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Tuple
 
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 
 
 class RateLimiter:
@@ -87,9 +87,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         max_requests = 100  # Default
         window_seconds = 60
         
-        # Stricter limits for auth endpoints
-        if request.url.path.startswith("/auth"):
-            max_requests = 5  # 5 requests per minute for auth
+        # Stricter limits for sensitive auth endpoints (login/register)
+        if request.url.path in ["/auth/login", "/auth/register", "/auth/login/form"]:
+            max_requests = 5  # 5 requests per minute for login/register
+            window_seconds = 60
+        
+        # Moderate limits for read-only auth endpoints
+        elif request.url.path.startswith("/auth"):
+            max_requests = 30  # 30 requests per minute for auth read operations
             window_seconds = 60
         
         # Stricter limits for booking creation
@@ -103,9 +108,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
         
         if not is_allowed:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Rate limit exceeded. Please try again later.",
+                content={"detail": "Rate limit exceeded. Please try again later."},
                 headers={
                     "X-RateLimit-Limit": str(max_requests),
                     "X-RateLimit-Remaining": "0",

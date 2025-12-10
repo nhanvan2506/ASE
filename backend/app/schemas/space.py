@@ -107,3 +107,27 @@ class RoomScheduleResponse(BaseModel):
     schedule: list[ScheduleSlotResponse] = Field(description="24-hour schedule slots")
 
     model_config = {"from_attributes": True}
+
+
+class WeeklySlotAvailability(BaseModel):
+    """Availability status for a specific time slot."""
+    date: str = Field(description="Date in YYYY-MM-DD format")
+    hour: str = Field(description="Hour in HH:00 format")
+    is_available: bool = Field(description="Whether the slot is available")
+    booking_id: int | None = Field(default=None, description="Booking ID if occupied")
+
+
+class SpaceWithAvailability(BaseModel):
+    """Space response with weekly availability information."""
+    id: int
+    name: str
+    building: str
+    floor: str
+    location: str | None = None
+    capacity: int
+    image_url: str | None = None
+    status: SpaceStatus
+    utilities: list[str] = []
+    availability: list[WeeklySlotAvailability] = Field(description="Availability for the requested week")
+
+    model_config = {"from_attributes": True}

@@ -255,19 +255,55 @@ async def create_booking(
     if request.end_time <= request.start_time:
         raise BadRequestException(detail="End time must be after start time")
 
-    # Check for time conflicts
-    conflict_query = select(Booking).where(
+    # Validate rounded hours - only allow bookings on the hour (XX:00)
+    if request.start_time.minute != 0 or request.start_time.second != 0:
+        raise BadRequestException(detail="Start time must be on the hour (e.g., 08:00, 09:00)")
+    
+    if request.end_time.minute != 0 or request.end_time.second != 0:
+        raise BadRequestException(detail="End time must be on the hour (e.g., 09:00, 10:00)")
+
+    # Check for time conflicts - now we need to check for continuous availability
+    # Get all bookings for this space and date
+    existing_bookings_query = select(Booking).where(
         and_(
             Booking.space_id == request.space_id,
             Booking.booking_date == request.booking_date,
             Booking.status.in_([BookingStatus.PENDING, BookingStatus.APPROVED]),
-            Booking.start_time < request.end_time,
-            Booking.end_time > request.start_time,
         )
-    )
-    conflict_result = await db.execute(conflict_query)
-    if conflict_result.scalar_one_or_none():
-        raise BadRequestException(detail="Time slot conflicts with existing booking")
+    ).order_by(Booking.start_time)
+    
+    existing_bookings_result = await db.execute(existing_bookings_query)
+    existing_bookings = existing_bookings_result.scalars().all()
+
+    # Check if the requested time slot overlaps with any existing booking
+    for booking in existing_bookings:
+        if request.start_time < booking.end_time and request.end_time > booking.start_time:
+            raise BadRequestException(
+                detail=f"Time slot conflicts with existing booking from {booking.start_time.strftime('%H:%M')} to {booking.end_time.strftime('%H:%M')}"
+            )
+    
+    # Validate continuous booking: Check if there are gaps in the requested time range
+    # If user wants to book 14:00-17:00 but 15:00-16:00 is already booked,
+    # they should only be able to book 14:00-15:00 or 16:00-17:00
+    requested_start_hour = request.start_time.hour
+    requested_end_hour = request.end_time.hour
+    
+    for hour in range(requested_start_hour, requested_end_hour):
+        hour_start = time(hour, 0)
+        hour_end = time(hour + 1, 0) if hour < 23 else time(23, 59, 59)
+        
+        # Check if this hour slot is occupied
+        is_occupied = any(
+            booking.start_time <= hour_start < booking.end_time or
+            booking.start_time < hour_end <= booking.end_time or
+            (hour_start <= booking.start_time and booking.end_time <= hour_end)
+            for booking in existing_bookings
+        )
+        
+        if is_occupied:
+            raise BadRequestException(
+                detail=f"Cannot book non-continuous time slots. Hour {hour}:00-{hour+1}:00 is already occupied."
+            )
 
     booking = Booking(
         user_id=current_user.id,

@@ -24,6 +24,8 @@ from app.schemas.space import (
     UpdateUtilityRequest,
     RoomScheduleResponse,
     ScheduleSlotResponse,
+    WeeklySlotAvailability,
+    SpaceWithAvailability,
 )
 from app.schemas.booking import (
     BookingResponse,
@@ -64,6 +66,8 @@ __all__ = [
     "UpdateUtilityRequest",
     "RoomScheduleResponse",
     "ScheduleSlotResponse",
+    "WeeklySlotAvailability",
+    "SpaceWithAvailability",
     # Booking
     "BookingResponse",
     "CreateBookingRequest",
