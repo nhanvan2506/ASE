@@ -36,7 +36,23 @@ async def get_room_schedule(
     
     Returns an array of 24 hourly slots (0-23) with occupancy information for the specified space and date.
     This endpoint is compatible with the ROMS (Room Management Service) schedule format.
+    
+    **Caching:** Results are cached in Redis for 15 minutes to reduce database load.
     """
+    from app.core.cache import get_cache, set_cache, get_schedule_cache_key
+    from app.core.config import settings
+    
+    # Generate cache key
+    date_str = query_date.isoformat()
+    cache_key = get_schedule_cache_key(space_id, date_str)
+    
+    # Try to get from cache first
+    cached_result = await get_cache(cache_key)
+    if cached_result:
+        # Return cached result
+        return RoomScheduleResponse(**cached_result)
+    
+    # Cache miss - query database
     # Verify space exists
     space_result = await db.execute(
         select(Space).where(Space.id == space_id)
@@ -102,12 +118,21 @@ async def get_room_schedule(
         )
         occupancy.append(hourly_slot)
 
-    return RoomScheduleResponse(
+    result = RoomScheduleResponse(
         space_id=space_id,
         date=query_date,
         occupancy=occupancy,
         total_bookings=len(bookings)
     )
+    
+    # Cache the result for 15 minutes
+    await set_cache(
+        cache_key,
+        result.model_dump(),
+        settings.CACHE_TTL_SCHEDULE
+    )
+    
+    return result
 
 
 @router.get("", response_model=PaginatedResponse[BookingResponse])
@@ -127,9 +152,12 @@ async def list_bookings(
         selectinload(Booking.user)
     )
 
-    # Non-admin users can ONLY see their own bookings (ignore my and user_id parameters)
+    # Non-admin users can see their own bookings by default.
+    # If `my` is explicitly false, allow viewing all bookings for timetable visibility.
     if current_user.role != UserRole.ADMIN:
-        query = query.where(Booking.user_id == current_user.id)
+        if my:
+            query = query.where(Booking.user_id == current_user.id)
+        # Non-admins cannot filter by user_id; ignore user_id when provided
     else:
         # Admin can filter by user_id or see their own bookings
         if user_id:
@@ -318,6 +346,13 @@ async def create_booking(
 
     db.add(booking)
     await db.flush()
+    
+    # Invalidate cache for this space and date
+    from app.core.cache import invalidate_schedule_cache
+    await invalidate_schedule_cache(
+        space_id=request.space_id,
+        date=request.booking_date.isoformat()
+    )
 
     # Log booking creation (audit trail for security)
     await log_audit_event(
@@ -386,6 +421,13 @@ async def update_booking(
         booking.approved_at = datetime.now(timezone.utc)
 
     await db.flush()
+    
+    # Invalidate cache for this space and date (status change affects schedule)
+    from app.core.cache import invalidate_schedule_cache
+    await invalidate_schedule_cache(
+        space_id=booking.space_id,
+        date=booking.booking_date.isoformat()
+    )
     
     # Log booking update (audit trail for security)
     action_map = {

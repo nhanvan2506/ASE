@@ -39,7 +39,7 @@ async def seed_default_users(session):
     """Seed default admin and lecturer users."""
     default_users = [
         {
-            "email": "admin@studtspace.com",
+            "email": "admin@studyspace.com",
             "password": "admin123",
             "full_name": "System Administrator",
             "role": UserRole.ADMIN,

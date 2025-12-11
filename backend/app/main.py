@@ -12,8 +12,14 @@ from app.routes import api_router
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
+    # Initialize Redis connection (if available)
+    from app.core.cache import get_redis_client
+    await get_redis_client()
     yield
     # Shutdown
+    # Close Redis connection
+    from app.core.cache import close_redis_client
+    await close_redis_client()
 
 
 app = FastAPI(

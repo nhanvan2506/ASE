@@ -40,6 +40,9 @@ class BookingResponse(BaseModel):
             space_response = SpaceResponse.from_orm_with_utilities(booking.space)
 
         if include_user and booking.user:
+            # Avoid lazy-loading bookings relationship in async context
+            # (prevents MissingGreenlet). If count is needed, ensure it is
+            # pre-fetched or add a dedicated field later.
             user_response = UserSummaryResponse(
                 id=booking.user.id,
                 full_name=booking.user.full_name,
@@ -48,7 +51,7 @@ class BookingResponse(BaseModel):
                 department=booking.user.department,
                 profile_image_url=booking.user.profile_image_url,
                 status=booking.user.status,
-                total_bookings=len(booking.user.bookings) if booking.user.bookings else 0,
+                total_bookings=0,
             )
 
         return cls(

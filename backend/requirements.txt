@@ -1,6 +1,7 @@
 alembic
 asyncpg
 bcrypt
+cryptography
 fastapi
 httpx
 loguru
@@ -10,6 +11,7 @@ pydantic[email]
 pyjwt
 python-dotenv
 python-multipart
+redis
 sqlalchemy
 tiktoken
 uvicorn[standard]

@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     SECRET_KEY: str = secrets.token_urlsafe(32)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
+    
+    # Encryption Settings for Booking Purpose
+    # In production, set this via environment variable: ENCRYPTION_KEY
+    # Generate a key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # If not set, will be derived from SECRET_KEY (deterministic)
+    ENCRYPTION_KEY: str = ""
 
     # Database Settings
     POSTGRES_USER: str = "postgres"
@@ -24,6 +30,16 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "study_space"
     # SSL mode for cloud databases (e.g., Neon, Supabase). Options: disable, require, verify-ca, verify-full
     POSTGRES_SSL_MODE: str = "disable"
+    
+    # Redis Cache Settings
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_USERNAME: str = ""  # Optional, for Redis Cloud/Auth
+    REDIS_PASSWORD: str = ""  # Optional, set via environment variable
+    REDIS_URL: str = ""  # Optional, full Redis URL (overrides host/port/db/username/password)
+    # Cache TTL in seconds (15 minutes = 900 seconds)
+    CACHE_TTL_SCHEDULE: int = 900  # 15 minutes for schedule endpoint
     
     @property
     def DATABASE_URL(self) -> str:
