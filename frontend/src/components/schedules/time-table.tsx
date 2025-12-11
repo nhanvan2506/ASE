@@ -167,7 +167,7 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
   }
 
   // Handle booking confirmation
-  const handleConfirmBooking = async () => {
+  const handleConfirmBooking = async (purpose: string) => {
     if (!selection || !room) return
 
     setIsConfirmModalOpen(false)
@@ -182,7 +182,7 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
         start_time: selection.startHour,
         end_time: selection.endHour,
         attendees: 1,
-        purpose: "Class booking via timetable"
+        purpose
       }
 
       await api.post("/bookings", bookingData, true)

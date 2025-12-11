@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { Room } from "../new_bookings/room-card"
 
 interface BookingConfirmModalProps {
@@ -8,7 +9,7 @@ interface BookingConfirmModalProps {
   startTime: string
   endTime: string
   isOpen: boolean
-  onConfirm: () => void
+  onConfirm: (purpose: string) => void
   onClose: () => void
 }
 
@@ -21,6 +22,9 @@ export function BookingConfirmModal({
   onConfirm,
   onClose
 }: BookingConfirmModalProps) {
+  const [purpose, setPurpose] = useState("")
+  const [touched, setTouched] = useState(false)
+
   if (!isOpen || !room) return null
 
   const formatDate = (dateStr: string) => {
@@ -114,6 +118,31 @@ export function BookingConfirmModal({
               <p className="text-lg font-bold text-black">{room.capacity} seats</p>
             </div>
           </div>
+
+          {/* Purpose Input */}
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 20h9" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4h9" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 12h16M4 16h16" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-gray-500 font-medium">Purpose (required)</p>
+              <textarea
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value)}
+                onBlur={() => setTouched(true)}
+                rows={3}
+                className="w-full mt-2 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., Lecture, exam, workshop..."
+              />
+              {touched && !purpose.trim() && (
+                <p className="text-xs text-red-600 mt-1">Purpose is required.</p>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons */}
@@ -125,8 +154,13 @@ export function BookingConfirmModal({
             Cancel
           </button>
           <button
-            onClick={onConfirm}
-            className="flex-1 py-3 px-6 text-base font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            onClick={() => {
+              setTouched(true)
+              if (!purpose.trim()) return
+              onConfirm(purpose.trim())
+            }}
+            className="flex-1 py-3 px-6 text-base font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={!purpose.trim()}
           >
             Confirm Booking
           </button>
