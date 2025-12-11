@@ -11,8 +11,8 @@ export function Header() {
   const isMobile = useMobile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { theme, setTheme } = useTheme()
-  const { isAuthenticated, isAdmin, logout } = useAuth()
-
+  const { isAuthenticated, isAdmin, isLecturer , logout } = useAuth()
+  // const isLecturer = user?.role === "lectur"
   return (
     <header className="py-6 px-5 relative z-20">
       <div className="container max-w-[1100px] mx-auto">
@@ -58,13 +58,12 @@ export function Header() {
                         Profile
                       </Link>
                     </li>
-                    <li>
+                    {isLecturer && (<li>
                       <Link href="/bookings" className="text-white hover:opacity-80 transition-opacity">
                         Bookings
                       </Link>
-                    </li>
+                    </li>)}
                     <li>
-
                       <Link
                         href="/schedules"
                         className="inline-block px-7 py-3 rounded-lg font-bold transition-all duration-300 bg-white text-black border-2 border-white hover:bg-white/10 hover:text-white"

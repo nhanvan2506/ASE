@@ -14,6 +14,7 @@ import { Room } from "../new_bookings/room-card"
 import { api } from "@/lib/api"
 import { toast } from "sonner"
 import { BookingConfirmModal } from "./booking-confirm-modal"
+import { useAuth } from "@/hooks/useAuth"
 
 export interface BookingSlot {
   roomId: number
@@ -225,6 +226,8 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
     )
   }
 
+  const { isLecturer} = useAuth()
+
   return (
     <div className="bg-white rounded-2xl border border-border p-6">
       {/* Room Info Header */}
@@ -329,7 +332,7 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
       </div>
 
       {/* Booking Section */}
-      {selection && (
+      {selection && isLecturer && (
         <div className={`mt-8 p-6 rounded-xl border-2 ${
           isTimeSlotAvailable()
             ? "bg-green-50 border-green-300"
