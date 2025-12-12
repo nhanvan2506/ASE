@@ -279,6 +279,15 @@ async def create_booking(
             detail=f"Attendees ({request.attendees}) exceeds space capacity ({space.capacity})"
         )
 
+    # Validate booking is not in the past
+    now = datetime.now(timezone.utc)
+    booking_datetime = datetime.combine(request.booking_date, request.start_time)
+    # Convert to UTC-aware datetime for comparison
+    booking_datetime = booking_datetime.replace(tzinfo=timezone.utc)
+
+    if booking_datetime < now:
+        raise BadRequestException(detail="Cannot book time slots in the past")
+
     # Check time validity
     if request.end_time <= request.start_time:
         raise BadRequestException(detail="End time must be after start time")

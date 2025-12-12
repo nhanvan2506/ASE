@@ -1,7 +1,7 @@
 // src/components/schedules/weekly-time-table.tsx
 "use client"
 
-import React, { useState, useRef, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import DatePicker from "react-datepicker"
 import "react-datepicker/dist/react-datepicker.css"
 import {
@@ -65,6 +65,13 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
         }))
     : []
 
+  // Check if a time slot is in the past
+  const isPastTimeSlot = (dateStr: string, hour: string) => {
+    const now = new Date()
+    const slotDateTime = new Date(`${dateStr}T${hour}:00`)
+    return slotDateTime < now
+  }
+
   // Check if the room is booked at a specific hour
   const isRoomBookedAt = (dateStr: string, hour: string) => {
     if (!room) return false
@@ -92,9 +99,14 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
 
   // Xử lý click vào ô giờ - chỉ cho phép chọn giờ tròn
   const handleCellClick = (dateStr: string, hour: string) => {
+    // Prevent selecting past time slots
+    if (isPastTimeSlot(dateStr, hour)) {
+      return
+    }
+
     // Validate rounded hour
     const hourNum = parseInt(hour)
-    
+
     if (!selection || selection.date !== dateStr) {
       // Bắt đầu chọn mới - start hour và end hour sẽ là giờ tiếp theo
       const nextHour = (hourNum + 1).toString().padStart(2, "0") + ":00"
@@ -126,6 +138,11 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
 
   // Xử lý kéo chuột - rounded hour
   const handleMouseDown = (dateStr: string, hour: string) => {
+    // Prevent selecting past time slots
+    if (isPastTimeSlot(dateStr, hour)) {
+      return
+    }
+
     setIsSelecting(true)
     const hourNum = parseInt(hour)
     const nextHour = (hourNum + 1).toString().padStart(2, "0") + ":00"
@@ -298,6 +315,7 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
               </div>
               {weekDays.map((day) => {
                 const dateStr = format(day, "yyyy-MM-dd")
+                const isPast = isPastTimeSlot(dateStr, hour)
                 const isBooked = isRoomBookedAt(dateStr, hour)
                 const inSelection = isInSelection(dateStr, hour)
 
@@ -305,20 +323,28 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
                   <div
                     key={`${dateStr}-${hour}`}
                     className={`
-                      border border-border h-14 cursor-pointer transition-all relative select-none
-                      ${isBooked
-                        ? "bg-red-100 hover:bg-red-150"
-                        : "bg-green-50 hover:bg-green-100"
+                      border border-border h-14 transition-all relative select-none
+                      ${isPast
+                        ? "bg-gray-200 cursor-not-allowed opacity-50"
+                        : isBooked
+                          ? "bg-red-100 hover:bg-red-150 cursor-pointer"
+                          : "bg-green-50 hover:bg-green-100 cursor-pointer"
                       }
                       ${inSelection ? "bg-blue-200 ring-4 ring-blue-500 ring-inset z-10" : ""}
                     `}
-                    onClick={() => handleCellClick(dateStr, hour)}
-                    onMouseDown={(e) => { e.preventDefault()
-                                          handleMouseDown(dateStr, hour)
-                                        }}
-                    onMouseEnter={() => handleMouseEnter(dateStr, hour)}
+                    onClick={() => !isPast && handleCellClick(dateStr, hour)}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      if (!isPast) handleMouseDown(dateStr, hour)
+                    }}
+                    onMouseEnter={() => !isPast && handleMouseEnter(dateStr, hour)}
                   >
-                    {isBooked && (
+                    {isPast && (
+                      <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-500">
+                        PAST
+                      </div>
+                    )}
+                    {!isPast && isBooked && (
                       <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-red-700">
                         BOOKED
                       </div>
@@ -384,6 +410,10 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
         <div className="flex items-center gap-2">
           <span className="w-5 h-5 rounded bg-red-100 border border-red-400" />
           Room booked
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-5 h-5 rounded bg-gray-200 border border-gray-400 opacity-50" />
+          Past time (unavailable)
         </div>
         <div className="flex items-center gap-2">
           <span className="w-5 h-5 rounded bg-blue-200 ring-4 ring-blue-500 ring-inset" />
