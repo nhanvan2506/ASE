@@ -106,6 +106,24 @@ async def test_admin(db_session: AsyncSession) -> User:
 
 
 @pytest_asyncio.fixture
+async def test_lecturer(db_session: AsyncSession) -> User:
+    """Create a test lecturer user."""
+    import uuid
+    unique_id = uuid.uuid4().hex[:8]
+    lecturer = User(
+        email=f"lecturer_{unique_id}@test.com",
+        password_hash=get_password_hash("lecturer123"),
+        full_name="Test Lecturer",
+        role=UserRole.LECTURER,
+        status=UserStatus.ACTIVE,
+    )
+    db_session.add(lecturer)
+    await db_session.flush()
+    await db_session.refresh(lecturer)
+    return lecturer
+
+
+@pytest_asyncio.fixture
 async def user_token(test_user: User) -> str:
     """Generate JWT token for test user."""
     return create_access_token(subject=test_user.id)
@@ -118,6 +136,12 @@ async def admin_token(test_admin: User) -> str:
 
 
 @pytest_asyncio.fixture
+async def lecturer_token(test_lecturer: User) -> str:
+    """Generate JWT token for test lecturer."""
+    return create_access_token(subject=test_lecturer.id)
+
+
+@pytest_asyncio.fixture
 async def auth_headers(user_token: str) -> dict:
     """Auth headers for regular user."""
     return {"Authorization": f"Bearer {user_token}"}
@@ -127,6 +151,12 @@ async def auth_headers(user_token: str) -> dict:
 async def admin_headers(admin_token: str) -> dict:
     """Auth headers for admin user."""
     return {"Authorization": f"Bearer {admin_token}"}
+
+
+@pytest_asyncio.fixture
+async def lecturer_headers(lecturer_token: str) -> dict:
+    """Auth headers for lecturer user."""
+    return {"Authorization": f"Bearer {lecturer_token}"}
 
 
 @pytest_asyncio.fixture

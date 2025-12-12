@@ -92,6 +92,46 @@ class TestLogin:
         assert response.status_code == 401
 
 
+class TestLoginForm:
+    """Tests for POST /auth/login/form (OAuth2 compatibility)"""
+
+    async def test_login_form_success(self, client: AsyncClient, test_user: User):
+        """Test successful login using OAuth2 form."""
+        response = await client.post("/auth/login/form", data={
+            "username": test_user.email,
+            "password": "password123",
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "token" in data
+        assert data["user"]["email"] == test_user.email
+
+    async def test_login_form_wrong_password(self, client: AsyncClient, test_user: User):
+        """Test login form with wrong password fails."""
+        response = await client.post("/auth/login/form", data={
+            "username": test_user.email,
+            "password": "wrongpassword",
+        })
+
+        assert response.status_code == 401
+
+    async def test_login_form_suspended_account(self, client: AsyncClient, test_user: User, db_session):
+        """Test login form with suspended account fails."""
+        from app.models import UserStatus
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        test_user.status = UserStatus.SUSPENDED
+        await db_session.flush()
+
+        response = await client.post("/auth/login/form", data={
+            "username": test_user.email,
+            "password": "password123",
+        })
+
+        assert response.status_code == 401
+
+
 class TestCurrentUser:
     """Tests for GET /auth/me and PATCH /auth/me"""
 
