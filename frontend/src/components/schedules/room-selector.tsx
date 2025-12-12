@@ -33,7 +33,7 @@ export function RoomSelector({ rooms, onRoomSelect, selectedRoom }: RoomSelector
         <h2 className="text-2xl font-bold text-black mb-4">Select a Room to View Schedule</h2>
         
         {/* Search and Filter */}
-        <div className="flex gap-4 mb-4">
+        <div className="flex gap-4 mb-4 text-black">
           <input
             type="text"
             placeholder="Search rooms..."
@@ -45,7 +45,7 @@ export function RoomSelector({ rooms, onRoomSelect, selectedRoom }: RoomSelector
           <select
             value={filterBuilding}
             onChange={(e) => setFilterBuilding(e.target.value)}
-            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
           >
             <option value="">All Buildings</option>
             {buildings.map(building => (

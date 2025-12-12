@@ -249,7 +249,7 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
             onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
             className="text-sm px-5 py-2.5 bg-black text-white hover:bg-gray-800 rounded-lg transition font-medium shadow-sm"
           >
-            Tuần này
+            This Week
           </button>
           <DatePicker
             selected={weekStart}
@@ -320,7 +320,7 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
                   >
                     {isBooked && (
                       <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-red-700">
-                        ĐÃ ĐẶT
+                        BOOKED
                       </div>
                     )}
                   </div>
@@ -379,15 +379,15 @@ export function WeeklyTimeTable({ room, bookings, onBookingSuccess }: WeeklyTime
       <div className="flex flex-wrap gap-6 mt-8 text-sm text-black">
         <div className="flex items-center gap-2">
           <span className="w-5 h-5 rounded bg-green-50 border border-green-400" />
-          Phòng trống
+          Room available
         </div>
         <div className="flex items-center gap-2">
           <span className="w-5 h-5 rounded bg-red-100 border border-red-400" />
-          Phòng đã đặt
+          Room booked
         </div>
         <div className="flex items-center gap-2">
           <span className="w-5 h-5 rounded bg-blue-200 ring-4 ring-blue-500 ring-inset" />
-          Đang chọn
+          Currently selecting
         </div>
       </div>
 
