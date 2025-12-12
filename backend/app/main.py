@@ -18,10 +18,9 @@ async def lifespan(app: FastAPI):
     # --- STARTUP ---
     logger.info("System Startup: Initializing Redis...")
     
-    # 1. Khởi tạo kết nối (Ping test bên trong)
+  
     await get_redis_client()
     
-    # 2. TEST GHI DỮ LIỆU THỰC TẾ
     test_key = "test:startup_check"
     test_value = {"status": "connected", "message": "Redis Cloud write is working!"}
     
@@ -29,20 +28,18 @@ async def lifespan(app: FastAPI):
     write_success = await set_cache(test_key, test_value, ttl=300)
     
     if write_success:
-        logger.info("REDIS WRITE SUCCESS: Đã ghi được key test vào Redis.")
-        
-        # 3. Test đọc lại ngay lập tức
+        logger.info("REDIS WRITE SUCCESS")
+
         read_value = await get_cache(test_key)
         if read_value:
-            logger.info(f"EDIS READ SUCCESS: Đọc lại được dữ liệu -> {read_value}")
+            logger.info(f"EDIS READ SUCCESS: {read_value}")
         else:
-            logger.error("REDIS READ FAILED: Ghi thành công nhưng không đọc lại được (???).")
+            logger.error("REDIS READ FAILED")
     else:
-        logger.error("REDIS WRITE FAILED: Hàm set_cache trả về False. Hãy kiểm tra log warning phía trên!")
+        logger.error("REDIS WRITE FAILED")
 
     yield
     
-    # --- SHUTDOWN ---
     logger.info("System Shutdown: Closing Redis connection...")
     await close_redis_client()
 
