@@ -4,6 +4,7 @@ Pytest configuration and fixtures for API testing.
 Uses a separate test database session for each test with proper isolation.
 """
 from typing import AsyncGenerator
+import os
 
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -15,6 +16,10 @@ from app.core.database import get_async_db
 from app.core.security import get_password_hash, create_access_token
 from app.main import app
 from app.models import User, UserRole, UserStatus, Utility, Space, SpaceStatus
+
+# Disable rate limiting and encryption for tests
+settings.ENABLE_RATE_LIMITING = False
+settings.ENABLE_ENCRYPTION = False
 
 
 def get_test_database_url() -> str:

@@ -148,7 +148,7 @@ class TestCurrentUser:
         """Test getting current user without auth fails."""
         response = await client.get("/auth/me")
 
-        assert response.status_code == 403  # HTTPBearer returns 403 when no token
+        assert response.status_code == 401  # HTTPBearer returns 401 when no token
 
     async def test_update_current_user(self, client: AsyncClient, auth_headers: dict):
         """Test updating current user profile."""

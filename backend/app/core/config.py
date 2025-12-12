@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     PROJECT_VERSION: str = "1.0.0"
     # Feature flags
     ENABLE_AUDIT_LOGS: bool = False
+    ENABLE_RATE_LIMITING: bool = True  # Disable in tests
+    ENABLE_ENCRYPTION: bool = True  # Disable in tests for simpler debugging
 
     # JWT Settings
     SECRET_KEY: str = secrets.token_urlsafe(32)

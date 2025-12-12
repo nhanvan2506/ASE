@@ -74,8 +74,14 @@ rate_limiter = RateLimiter()
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Rate limiting middleware."""
-    
+
     async def dispatch(self, request: Request, call_next):
+        from app.core.config import settings
+
+        # Skip rate limiting if disabled (e.g., in tests)
+        if not settings.ENABLE_RATE_LIMITING:
+            return await call_next(request)
+
         # Skip rate limiting for health check
         if request.url.path == "/health":
             return await call_next(request)

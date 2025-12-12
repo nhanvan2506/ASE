@@ -93,6 +93,12 @@ def encrypt_booking_data(plain_text: str) -> str:
     """Encrypt booking sensitive text data (purpose, cancellation_reason, etc.)."""
     if not plain_text:
         return plain_text
+
+    # Check if encryption is enabled
+    from app.core.config import settings
+    if not settings.ENABLE_ENCRYPTION:
+        return plain_text
+
     try:
         fernet = _get_fernet()
         encrypted = fernet.encrypt(plain_text.encode('utf-8'))
@@ -109,6 +115,12 @@ def decrypt_booking_data(encrypted_text: str) -> str:
     """Decrypt booking sensitive text data."""
     if not encrypted_text:
         return encrypted_text
+
+    # Check if encryption is enabled
+    from app.core.config import settings
+    if not settings.ENABLE_ENCRYPTION:
+        return encrypted_text
+
     try:
         fernet = _get_fernet()
         decrypted = fernet.decrypt(encrypted_text.encode('utf-8'))

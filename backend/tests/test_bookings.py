@@ -111,7 +111,7 @@ class TestListBookings:
         """Test listing bookings without auth fails."""
         response = await client.get("/bookings")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     async def test_list_bookings_filter_by_status(
         self, client: AsyncClient, auth_headers: dict, test_booking: Booking

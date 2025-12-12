@@ -83,6 +83,154 @@ async def list_spaces(
     )
 
 
+@router.get("/available", response_model=PaginatedResponse[SpaceResponse])
+async def get_available_spaces(
+    db: Annotated[AsyncSession, Depends(get_async_db)],
+    booking_date: date = Query(..., alias="date", description="Booking date (YYYY-MM-DD)"),
+    start_time: str = Query(..., alias="startTime", description="Start time (HH:MM)"),
+    end_time: str = Query(..., alias="endTime", description="End time (HH:MM)"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    """Get available spaces for a specific date and time range."""
+    # Parse time strings
+    try:
+        start_t = time.fromisoformat(start_time)
+        end_t = time.fromisoformat(end_time)
+    except ValueError:
+        raise BadRequestException(detail="Invalid time format. Use HH:MM format.")
+
+    # Validate rounded hours
+    if start_t.minute != 0 or start_t.second != 0:
+        raise BadRequestException(detail="Start time must be on the hour (e.g., 08:00)")
+
+    if end_t.minute != 0 or end_t.second != 0:
+        raise BadRequestException(detail="End time must be on the hour (e.g., 09:00)")
+
+    if end_t <= start_t:
+        raise BadRequestException(detail="End time must be after start time")
+
+    # Get all active spaces
+    spaces_query = select(Space).where(Space.status == SpaceStatus.ACTIVE).options(
+        selectinload(Space.utilities)
+    )
+    spaces_result = await db.execute(spaces_query)
+    all_spaces = spaces_result.scalars().all()
+
+    # Get all conflicting bookings for the date
+    bookings_query = select(Booking).where(
+        and_(
+            Booking.booking_date == booking_date,
+            Booking.status.in_([BookingStatus.PENDING, BookingStatus.APPROVED]),
+            Booking.start_time < end_t,
+            Booking.end_time > start_t,
+        )
+    )
+    bookings_result = await db.execute(bookings_query)
+    conflicting_bookings = bookings_result.scalars().all()
+
+    # Get set of occupied space IDs
+    occupied_space_ids = {booking.space_id for booking in conflicting_bookings}
+
+    # Filter available spaces
+    available_spaces = [
+        space for space in all_spaces
+        if space.id not in occupied_space_ids
+    ]
+
+    # Apply pagination
+    total = len(available_spaces)
+    paginated_spaces = available_spaces[offset:offset + limit]
+
+    return PaginatedResponse(
+        data=[SpaceResponse.from_orm_with_utilities(s) for s in paginated_spaces],
+        meta=PaginatedResponseMeta(total=total, limit=limit, offset=offset)
+    )
+
+
+@router.get("/weekly-availability", response_model=list[SpaceWithAvailability])
+async def get_weekly_availability(
+    db: Annotated[AsyncSession, Depends(get_async_db)],
+    week_start: date = Query(..., alias="weekStart", description="Start of week (YYYY-MM-DD, Monday)"),
+    limit: int = Query(default=100, ge=1, le=100),
+):
+    """Get all spaces with their weekly availability (7 days, 5am-11pm)."""
+    from datetime import timedelta
+
+    # Get all active spaces
+    spaces_query = select(Space).where(Space.status == SpaceStatus.ACTIVE).options(
+        selectinload(Space.utilities)
+    ).limit(limit)
+    spaces_result = await db.execute(spaces_query)
+    spaces = spaces_result.scalars().all()
+
+    # Get all bookings for the week
+    week_end = week_start + timedelta(days=7)
+    bookings_query = select(Booking).where(
+        and_(
+            Booking.booking_date >= week_start,
+            Booking.booking_date < week_end,
+            Booking.status.in_([BookingStatus.PENDING, BookingStatus.APPROVED])
+        )
+    )
+    bookings_result = await db.execute(bookings_query)
+    bookings = bookings_result.scalars().all()
+
+    # Build availability data for each space
+    result = []
+    for space in spaces:
+        availability_slots = []
+
+        # For each day in the week
+        for day_offset in range(7):
+            current_date = week_start + timedelta(days=day_offset)
+            date_str = current_date.isoformat()
+
+            # For each hour from 5am to 11pm (05:00 to 23:00)
+            for hour in range(5, 24):
+                hour_str = f"{hour:02d}:00"
+                hour_start_minutes = hour * 60
+                hour_end_minutes = (hour + 1) * 60
+
+                # Check if this space is booked at this time
+                is_available = True
+                booking_id = None
+
+                for booking in bookings:
+                    if booking.space_id == space.id and booking.booking_date == current_date:
+                        # Convert booking times to minutes
+                        booking_start_minutes = booking.start_time.hour * 60 + booking.start_time.minute
+                        booking_end_minutes = booking.end_time.hour * 60 + booking.end_time.minute
+
+                        # Check overlap
+                        if hour_start_minutes < booking_end_minutes and hour_end_minutes > booking_start_minutes:
+                            is_available = False
+                            booking_id = booking.id
+                            break
+
+                availability_slots.append(WeeklySlotAvailability(
+                    date=date_str,
+                    hour=hour_str,
+                    is_available=is_available,
+                    booking_id=booking_id
+                ))
+
+        result.append(SpaceWithAvailability(
+            id=space.id,
+            name=space.name,
+            building=space.building,
+            floor=space.floor,
+            location=space.location,
+            capacity=space.capacity,
+            image_url=space.image_url,
+            status=space.status,
+            utilities=[u.key for u in space.utilities],
+            availability=availability_slots
+        ))
+
+    return result
+
+
 @router.get("/{space_id}", response_model=SpaceResponse)
 async def get_space(
     space_id: int,
@@ -279,151 +427,3 @@ async def get_room_schedule(
         date=schedule_date.isoformat(),
         schedule=schedule_slots
     )
-
-
-@router.get("/available", response_model=PaginatedResponse[SpaceResponse])
-async def get_available_spaces(
-    db: Annotated[AsyncSession, Depends(get_async_db)],
-    booking_date: date = Query(..., alias="date", description="Booking date (YYYY-MM-DD)"),
-    start_time: str = Query(..., alias="startTime", description="Start time (HH:MM)"),
-    end_time: str = Query(..., alias="endTime", description="End time (HH:MM)"),
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-):
-    """Get available spaces for a specific date and time range."""
-    # Parse time strings
-    try:
-        start_t = time.fromisoformat(start_time)
-        end_t = time.fromisoformat(end_time)
-    except ValueError:
-        raise BadRequestException(detail="Invalid time format. Use HH:MM format.")
-
-    # Validate rounded hours
-    if start_t.minute != 0 or start_t.second != 0:
-        raise BadRequestException(detail="Start time must be on the hour (e.g., 08:00)")
-    
-    if end_t.minute != 0 or end_t.second != 0:
-        raise BadRequestException(detail="End time must be on the hour (e.g., 09:00)")
-
-    if end_t <= start_t:
-        raise BadRequestException(detail="End time must be after start time")
-
-    # Get all active spaces
-    spaces_query = select(Space).where(Space.status == SpaceStatus.ACTIVE).options(
-        selectinload(Space.utilities)
-    )
-    spaces_result = await db.execute(spaces_query)
-    all_spaces = spaces_result.scalars().all()
-
-    # Get all conflicting bookings for the date
-    bookings_query = select(Booking).where(
-        and_(
-            Booking.booking_date == booking_date,
-            Booking.status.in_([BookingStatus.PENDING, BookingStatus.APPROVED]),
-            Booking.start_time < end_t,
-            Booking.end_time > start_t,
-        )
-    )
-    bookings_result = await db.execute(bookings_query)
-    conflicting_bookings = bookings_result.scalars().all()
-
-    # Get set of occupied space IDs
-    occupied_space_ids = {booking.space_id for booking in conflicting_bookings}
-
-    # Filter available spaces
-    available_spaces = [
-        space for space in all_spaces
-        if space.id not in occupied_space_ids
-    ]
-
-    # Apply pagination
-    total = len(available_spaces)
-    paginated_spaces = available_spaces[offset:offset + limit]
-
-    return PaginatedResponse(
-        data=[SpaceResponse.from_orm_with_utilities(s) for s in paginated_spaces],
-        meta=PaginatedResponseMeta(total=total, limit=limit, offset=offset)
-    )
-
-
-@router.get("/weekly-availability", response_model=list[SpaceWithAvailability])
-async def get_weekly_availability(
-    db: Annotated[AsyncSession, Depends(get_async_db)],
-    week_start: date = Query(..., alias="weekStart", description="Start of week (YYYY-MM-DD, Monday)"),
-    limit: int = Query(default=100, ge=1, le=100),
-):
-    """Get all spaces with their weekly availability (7 days, 5am-11pm)."""
-    from datetime import timedelta
-    
-    # Get all active spaces
-    spaces_query = select(Space).where(Space.status == SpaceStatus.ACTIVE).options(
-        selectinload(Space.utilities)
-    ).limit(limit)
-    spaces_result = await db.execute(spaces_query)
-    spaces = spaces_result.scalars().all()
-
-    # Get all bookings for the week
-    week_end = week_start + timedelta(days=7)
-    bookings_query = select(Booking).where(
-        and_(
-            Booking.booking_date >= week_start,
-            Booking.booking_date < week_end,
-            Booking.status.in_([BookingStatus.PENDING, BookingStatus.APPROVED])
-        )
-    )
-    bookings_result = await db.execute(bookings_query)
-    bookings = bookings_result.scalars().all()
-
-    # Build availability data for each space
-    result = []
-    for space in spaces:
-        availability_slots = []
-        
-        # For each day in the week
-        for day_offset in range(7):
-            current_date = week_start + timedelta(days=day_offset)
-            date_str = current_date.isoformat()
-            
-            # For each hour from 5am to 11pm (05:00 to 23:00)
-            for hour in range(5, 24):
-                hour_str = f"{hour:02d}:00"
-                hour_start_minutes = hour * 60
-                hour_end_minutes = (hour + 1) * 60
-                
-                # Check if this space is booked at this time
-                is_available = True
-                booking_id = None
-                
-                for booking in bookings:
-                    if booking.space_id == space.id and booking.booking_date == current_date:
-                        # Convert booking times to minutes
-                        booking_start_minutes = booking.start_time.hour * 60 + booking.start_time.minute
-                        booking_end_minutes = booking.end_time.hour * 60 + booking.end_time.minute
-                        
-                        # Check overlap
-                        if hour_start_minutes < booking_end_minutes and hour_end_minutes > booking_start_minutes:
-                            is_available = False
-                            booking_id = booking.id
-                            break
-                
-                availability_slots.append(WeeklySlotAvailability(
-                    date=date_str,
-                    hour=hour_str,
-                    is_available=is_available,
-                    booking_id=booking_id
-                ))
-        
-        result.append(SpaceWithAvailability(
-            id=space.id,
-            name=space.name,
-            building=space.building,
-            floor=space.floor,
-            location=space.location,
-            capacity=space.capacity,
-            image_url=space.image_url,
-            status=space.status,
-            utilities=[u.key for u in space.utilities],
-            availability=availability_slots
-        ))
-    
-    return result
