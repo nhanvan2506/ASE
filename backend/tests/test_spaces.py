@@ -206,7 +206,7 @@ class TestGetSpaceSchedule:
     """Tests for GET /spaces/{space_id}/schedule"""
 
     async def test_get_space_schedule_success(
-        self, client: AsyncClient, test_space: Space, db_session
+        self, client: AsyncClient, test_space: Space, test_user: User, db_session
     ):
         """Test getting space schedule for a specific date."""
         from datetime import date, time, timedelta
@@ -215,7 +215,7 @@ class TestGetSpaceSchedule:
         # Create a booking for tomorrow
         tomorrow = date.today() + timedelta(days=1)
         booking = Booking(
-            user_id=1,
+            user_id=test_user.id,
             space_id=test_space.id,
             booking_date=tomorrow,
             start_time=time(10, 0),
