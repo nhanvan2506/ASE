@@ -60,29 +60,32 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
 _fernet_instance: Fernet | None = None
 
 
+def _derive_key_from_secret() -> bytes:
+    """Derive a stable Fernet key from SECRET_KEY for deterministic usage."""
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'booking_encryption_salt',  # Fixed salt for consistency
+        iterations=100000,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(settings.SECRET_KEY.encode()))
+
+
 def _get_fernet() -> Fernet:
     """Get or create Fernet instance for encryption."""
     global _fernet_instance
     if _fernet_instance is None:
-        # If ENCRYPTION_KEY is provided, use it directly
+        # If ENCRYPTION_KEY is provided, prefer it; fall back to derived key if invalid
         if settings.ENCRYPTION_KEY:
             try:
                 _fernet_instance = Fernet(settings.ENCRYPTION_KEY.encode())
             except Exception:
-                # If key is invalid, generate a new one
-                _fernet_instance = Fernet.generate_key()
-                settings.ENCRYPTION_KEY = _fernet_instance.decode()
+                import logging
+                logging.warning("Invalid ENCRYPTION_KEY provided; falling back to derived key")
+                _fernet_instance = Fernet(_derive_key_from_secret())
         else:
-            # Generate a key from SECRET_KEY (deterministic for same SECRET_KEY)
-            # This ensures the same key is used across restarts if SECRET_KEY doesn't change
-            kdf = PBKDF2HMAC(
-                algorithm=hashes.SHA256(),
-                length=32,
-                salt=b'booking_encryption_salt',  # Fixed salt for consistency
-                iterations=100000,
-            )
-            key = base64.urlsafe_b64encode(kdf.derive(settings.SECRET_KEY.encode()))
-            _fernet_instance = Fernet(key)
+            # Use deterministic key derived from SECRET_KEY (stable across restarts)
+            _fernet_instance = Fernet(_derive_key_from_secret())
     return _fernet_instance
 
 

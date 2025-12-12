@@ -1,24 +1,49 @@
 from contextlib import asynccontextmanager
+import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.rate_limit import RateLimitMiddleware
 from app.routes import api_router
+from app.core.cache import get_redis_client, close_redis_client, set_cache, get_cache
 
+# Setup logger để in ra console cho dễ nhìn
+logger = logging.getLogger("uvicorn.error")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    # Startup
-    # Initialize Redis connection (if available)
-    from app.core.cache import get_redis_client
+    # --- STARTUP ---
+    logger.info("System Startup: Initializing Redis...")
+    
+    # 1. Khởi tạo kết nối (Ping test bên trong)
     await get_redis_client()
+    
+    # 2. TEST GHI DỮ LIỆU THỰC TẾ
+    test_key = "test:startup_check"
+    test_value = {"status": "connected", "message": "Redis Cloud write is working!"}
+    
+    logger.info(f"Testing Redis Write with key: '{test_key}'...")
+    write_success = await set_cache(test_key, test_value, ttl=300)
+    
+    if write_success:
+        logger.info("REDIS WRITE SUCCESS: Đã ghi được key test vào Redis.")
+        
+        # 3. Test đọc lại ngay lập tức
+        read_value = await get_cache(test_key)
+        if read_value:
+            logger.info(f"EDIS READ SUCCESS: Đọc lại được dữ liệu -> {read_value}")
+        else:
+            logger.error("REDIS READ FAILED: Ghi thành công nhưng không đọc lại được (???).")
+    else:
+        logger.error("REDIS WRITE FAILED: Hàm set_cache trả về False. Hãy kiểm tra log warning phía trên!")
+
     yield
-    # Shutdown
-    # Close Redis connection
-    from app.core.cache import close_redis_client
+    
+    # --- SHUTDOWN ---
+    logger.info("System Shutdown: Closing Redis connection...")
     await close_redis_client()
 
 
