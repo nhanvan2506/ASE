@@ -1,0 +1,244 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Backend Tests
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: study_space_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          uv pip install --system -r pyproject.toml
+          uv pip install --system pytest pytest-asyncio
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+          echo "PostgreSQL is ready!"
+
+      - name: Set up test database
+        working-directory: ./backend
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: study_space_test
+        run: |
+          echo "Setting up test database..."
+          python scripts/setup_test_db.py
+
+      - name: Run tests
+        working-directory: ./backend
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: study_space_test
+        run: |
+          if [ -d "tests" ] && [ "$(ls -A tests/*.py 2>/dev/null)" ]; then
+            pytest tests/ -v
+          else
+            echo "No tests found or tests directory is empty, skipping..."
+            exit 0
+          fi
+
+  # Frontend Tests & Linting
+  frontend-test:
+    name: Frontend Tests & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ./frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run linter
+        working-directory: ./frontend
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build application
+        working-directory: ./frontend
+        env:
+          NEXT_PUBLIC_API_URL: /api
+          NEXT_PUBLIC_APP_NAME: Study Space
+        run: npm run build
+
+  # Build and Push Docker Images
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        service: [backend, frontend]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./${{ matrix.service }}
+          file: ./${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NEXT_PUBLIC_API_URL=/api
+            NEXT_PUBLIC_APP_NAME=Study Space
+
+  # Integration Tests
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [backend-test, frontend-test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          cat > .env << EOF
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=study_space
+          POSTGRES_PORT=5432
+          SECRET_KEY=test-secret-key-for-ci
+          ALGORITHM=HS256
+          ACCESS_TOKEN_EXPIRE_MINUTES=11520
+          NEXT_PUBLIC_APP_NAME=Study Space
+          NEXT_PUBLIC_APP_URL=http://localhost
+          EOF
+
+      - name: Build and start services
+        run: docker compose up -d --build
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for services to start..."
+          sleep 30
+          docker compose ps
+          echo "Waiting for database to be ready..."
+          timeout 60 bash -c 'until docker compose exec -T db pg_isready -U postgres; do sleep 2; done'
+          echo "Waiting for backend to be healthy..."
+          timeout 60 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
+          echo "All services are ready!"
+
+      - name: Run database migrations
+        run: docker compose exec -T backend alembic upgrade head
+
+      - name: Check backend health
+        run: |
+          curl -f http://localhost:8000/health || exit 1
+
+      - name: Check frontend accessibility
+        run: |
+          curl -f http://localhost:3000 || exit 1
+
+      - name: Check nginx routing
+        run: |
+          curl -f http://localhost/health || exit 1
+          curl -f http://localhost/api/health || exit 1
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v
