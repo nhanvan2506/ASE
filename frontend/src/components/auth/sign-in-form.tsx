@@ -54,7 +54,7 @@ export function SignInForm({ onSwitchToSignUp }: SignInFormProps) {
           className="text-2xl font-bold"
           style={{ fontFamily: 'var(--font-heading, Orbitron, sans-serif)' }}
         >
-          study space
+          SCAMS
         </span>
       </Link>
 

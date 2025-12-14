@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from './useAuth';
-import type { UserResponse } from '@/schemas/api';
+import { useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { useAuth } from "./useAuth";
+import type { UserResponse } from "@/schemas/api";
 
 // ============================================================================
 // useRequireAuth Hook
@@ -32,23 +32,25 @@ import type { UserResponse } from '@/schemas/api';
  * ```
  */
 export function useRequireAuth(): UserResponse | null {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading, initializing } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    // Wait for auth to initialize
-    if (loading) {
+    // Wait for auth to initialize (checking token and /auth/me)
+    if (initializing || loading) {
       return;
     }
 
-    // Redirect to login if not authenticated
+    // Redirect to login if not authenticated, preserving the return URL
     if (!isAuthenticated) {
-      router.push('/auth');
+      const returnUrl = encodeURIComponent(pathname);
+      router.push(`/auth?returnUrl=${returnUrl}`);
     }
-  }, [isAuthenticated, loading, router]);
+  }, [isAuthenticated, loading, initializing, router, pathname]);
 
   // Return null while loading or redirecting
-  if (loading || !isAuthenticated) {
+  if (initializing || loading || !isAuthenticated) {
     return null;
   }
 

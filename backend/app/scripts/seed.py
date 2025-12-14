@@ -35,23 +35,38 @@ async def seed_utilities(session):
     await session.flush()
 
 
-async def seed_admin_user(session):
-    """Seed default admin user."""
-    admin_email = "admin@studyspace.com"
+async def seed_default_users(session):
+    """Seed default admin and lecturer users."""
+    default_users = [
+        {
+            "email": "admin@studyspace.com",
+            "password": "admin123",
+            "full_name": "System Administrator",
+            "role": UserRole.ADMIN,
+        },
+        {
+            "email": "test1@gmail.com",
+            "password": "12345678",
+            "full_name": "Lecturer One",
+            "role": UserRole.LECTURER,
+        },
+    ]
 
-    result = await session.execute(select(User).where(User.email == admin_email))
-    if not result.scalar_one_or_none():
-        admin = User(
-            email=admin_email,
-            password_hash=get_password_hash("admin123"),
-            full_name="System Administrator",
-            role=UserRole.ADMIN,
+    for user in default_users:
+        result = await session.execute(select(User).where(User.email == user["email"]))
+        if result.scalar_one_or_none():
+            print(f"  User already exists: {user['email']}")
+            continue
+
+        new_user = User(
+            email=user["email"],
+            password_hash=get_password_hash(user["password"]),
+            full_name=user["full_name"],
+            role=user["role"],
             status=UserStatus.ACTIVE,
         )
-        session.add(admin)
-        print(f"  Added admin user: {admin_email} (password: admin123)")
-    else:
-        print(f"  Admin user already exists: {admin_email}")
+        session.add(new_user)
+        print(f"  Added user: {user['email']} (password: {user['password']})")
 
     await session.flush()
 
@@ -66,46 +81,47 @@ async def seed_sample_spaces(session):
 
     spaces_data = [
         {
-            "name": "Study Room A1",
-            "building": "Library",
-            "floor": "1",
-            "location": "Near entrance",
-            "capacity": 6,
+            "name": "Room 401",
+            "building": "B4",
+            "floor": "4",
+            "location": "Near Circle K",
+            "capacity": 20,
             "status": SpaceStatus.ACTIVE,
             "utility_keys": ["wifi", "ac", "whiteboard", "power_outlets"],
         },
         {
-            "name": "Study Room A2",
-            "building": "Library",
-            "floor": "1",
-            "location": "Near cafe",
-            "capacity": 4,
+            "name": "Room 306",
+            "building": "B4",
+            "floor": "3",
+            "location": "Near entrance 1",
+            "capacity": 36,
             "status": SpaceStatus.ACTIVE,
             "utility_keys": ["wifi", "ac", "power_outlets"],
         },
         {
-            "name": "Computer Lab B1",
-            "building": "Library",
-            "floor": "2",
-            "location": "East wing",
+            "name": "Room 305",
+            "building": "B4",
+            "floor": "3",
+            "location": "Near Circle K",
             "capacity": 20,
             "status": SpaceStatus.ACTIVE,
             "utility_keys": ["wifi", "ac", "computer", "printer", "power_outlets"],
         },
         {
-            "name": "Quiet Study Hall",
-            "building": "Library",
+            "name": "Room 304",
+            "building": "B4",
             "floor": "3",
-            "location": "Top floor",
-            "capacity": 50,
+            "location": "Near Circle K",
+            "capacity": 40,
             "status": SpaceStatus.ACTIVE,
             "utility_keys": ["wifi", "ac", "quiet_zone", "power_outlets"],
         },
         {
-            "name": "Meeting Room C1",
-            "building": "Student Center",
-            "floor": "1",
-            "capacity": 10,
+            "name": "Room 503",
+            "building": "A4",
+            "floor": "5",
+            "location": "Near library",
+            "capacity": 36,
             "status": SpaceStatus.ACTIVE,
             "utility_keys": ["wifi", "ac", "projector", "whiteboard"],
         },
@@ -147,8 +163,8 @@ async def main():
             print("\nSeeding utilities...")
             await seed_utilities(session)
 
-            print("\nSeeding admin user...")
-            await seed_admin_user(session)
+            print("\nSeeding default users...")
+            await seed_default_users(session)
 
             print("\nSeeding sample spaces...")
             await seed_sample_spaces(session)

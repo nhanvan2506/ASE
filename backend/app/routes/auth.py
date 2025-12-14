@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import OAuth2PasswordRequestForm, HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,20 +71,56 @@ async def register(
 @router.post("/login", response_model=AuthTokenResponse)
 async def login(
     request: LoginRequest,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_async_db)]
 ):
     """Log in and receive JWT token."""
+    from app.core.audit_log import log_audit_event, AuditAction
+    
     result = await db.execute(select(User).where(User.email == request.email.lower()))
     user = result.scalar_one_or_none()
 
+    ip_address = http_request.client.host if http_request.client else None
+    user_agent = http_request.headers.get("user-agent")
+
     if not user or not verify_password(request.password, user.password_hash):
+        # Log failed login attempt
+        await log_audit_event(
+            db=db,
+            action=AuditAction.LOGIN_FAILED,
+            user_id=None,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details=f"Failed login attempt for email: {request.email}",
+            status="failed"
+        )
         raise UnauthorizedException(detail="Invalid email or password", code="INVALID_CREDENTIALS")
 
     if user.status != UserStatus.ACTIVE:
+        # Log failed login (suspended account)
+        await log_audit_event(
+            db=db,
+            action=AuditAction.LOGIN_FAILED,
+            user_id=user.id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            details="Login attempt on suspended account",
+            status="failed"
+        )
         raise UnauthorizedException(detail="Account is suspended", code="ACCOUNT_SUSPENDED")
 
     # Create access token
     token = create_access_token(subject=user.id)
+
+    # Log successful login
+    await log_audit_event(
+        db=db,
+        action=AuditAction.LOGIN_SUCCESS,
+        user_id=user.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        status="success"
+    )
 
     return AuthTokenResponse(
         token=token,

@@ -12,11 +12,11 @@ export function Footer() {
             <Link href="/" className="flex items-center gap-2.5 text-xl font-bold text-foreground mb-2">
               <Logo className="w-[30px] h-[30px]" color="currentColor" />
               <span style={{ fontFamily: 'var(--font-heading, Orbitron, sans-serif)' }}>
-                study space
+                SCAMS
               </span>
             </Link>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              &copy; 2025 Study Space. All rights reserved.
+              &copy; 2025 SCAMS. All rights reserved.
             </p>
           </div>
 

@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, date, time
-from typing import List, Optional
+from typing import ClassVar, List, Optional
 
 import sqlalchemy as sa
 from sqlalchemy import (
@@ -11,10 +11,17 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     CheckConstraint,
+    event,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.core.database import Base
+from app.core.security import (
+    encrypt_booking_data,
+    decrypt_booking_data,
+    sanitize_booking_purpose,
+    sanitize_cancellation_reason,
+)
 from app.models.enums import BookingStatus
 
 
@@ -128,3 +135,82 @@ class Booking(Base):
         if value and self.check_in_at and value <= self.check_in_at:
             raise ValueError("Check-out time must be after check-in time")
         return value
+    
+    # Internal storage for encrypted fields (used by events)
+    _purpose_encrypted: ClassVar[Optional[str]] = None
+    _cancellation_reason_encrypted: ClassVar[Optional[str]] = None
+
+
+# SQLAlchemy events to automatically encrypt/decrypt sensitive booking fields
+def _encrypt_field_if_needed(field_value: Optional[str], cached_encrypted: Optional[str]) -> Optional[str]:
+    """Helper to encrypt a field if it's not already encrypted."""
+    if not field_value:
+        return field_value
+    
+    # Check if it's already encrypted and cached
+    if cached_encrypted and field_value == cached_encrypted:
+        return field_value
+    
+    # Check if it looks like encrypted data
+    is_encrypted = (
+        field_value.startswith('gAAAAAB') or 
+        (len(field_value) > 50 and '=' in field_value)  # Base64 padding
+    )
+    
+    if not is_encrypted:
+        # Encrypt the plain text
+        return encrypt_booking_data(field_value)
+    else:
+        # Already encrypted
+        return field_value
+
+
+def _decrypt_field_if_needed(field_value: Optional[str]) -> Optional[str]:
+    """Helper to decrypt a field if it's encrypted."""
+    if not field_value:
+        return field_value
+    
+    try:
+        # Try to decrypt
+        decrypted = decrypt_booking_data(field_value)
+        # Only return decrypted if it's different (was encrypted)
+        if decrypted != field_value:
+            return decrypted
+        return field_value
+    except (ValueError, Exception):
+        # If decryption fails, it might be plain text (for backward compatibility)
+        return field_value
+
+
+@event.listens_for(Booking, "before_insert", propagate=True)
+@event.listens_for(Booking, "before_update", propagate=True)
+def encrypt_booking_fields_before_save(mapper, connection, target):
+    """Encrypt all sensitive booking fields before saving to database."""
+    # Sanitize and encrypt purpose
+    if target.purpose:
+        target.purpose = sanitize_booking_purpose(target.purpose)
+        target._purpose_encrypted = _encrypt_field_if_needed(target.purpose, target._purpose_encrypted)
+        target.purpose = target._purpose_encrypted
+    
+    # Sanitize and encrypt cancellation_reason
+    if target.cancellation_reason:
+        target.cancellation_reason = sanitize_cancellation_reason(target.cancellation_reason)
+        target._cancellation_reason_encrypted = _encrypt_field_if_needed(
+            target.cancellation_reason, 
+            target._cancellation_reason_encrypted
+        )
+        target.cancellation_reason = target._cancellation_reason_encrypted
+
+
+@event.listens_for(Booking, "load", propagate=True)
+def decrypt_booking_fields_after_load(target, context):
+    """Decrypt all sensitive booking fields after loading from database."""
+    # Decrypt purpose
+    if target.purpose:
+        target.purpose = _decrypt_field_if_needed(target.purpose)
+        target._purpose_encrypted = None  # Clear encrypted cache
+    
+    # Decrypt cancellation_reason
+    if target.cancellation_reason:
+        target.cancellation_reason = _decrypt_field_if_needed(target.cancellation_reason)
+        target._cancellation_reason_encrypted = None  # Clear encrypted cache

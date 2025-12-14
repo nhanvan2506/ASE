@@ -110,6 +110,18 @@ class TestAdminUsers:
         data = response.json()
         assert data["role"] == "admin"
 
+    async def test_admin_cannot_modify_own_account(
+        self, client: AsyncClient, admin_headers: dict, test_admin: User
+    ):
+        """Test admin cannot modify their own account status or role."""
+        response = await client.patch(
+            f"/admin/users/{test_admin.id}",
+            headers=admin_headers,
+            json={"status": "suspended"}
+        )
+
+        assert response.status_code == 403
+
     async def test_get_user_summary(
         self, client: AsyncClient, admin_headers: dict, test_user: User
     ):
@@ -146,6 +158,76 @@ class TestPenalties:
         response = await client.get("/penalties", headers=auth_headers)
 
         assert response.status_code == 403
+
+    async def test_list_penalties_filter_by_user(
+        self, client: AsyncClient, admin_headers: dict, test_user: User, db_session: AsyncSession
+    ):
+        """Test filtering penalties by user ID."""
+        penalty = UserPenalty(
+            user_id=test_user.id,
+            reason="Test penalty",
+            points=5,
+            status=PenaltyStatus.ACTIVE,
+        )
+        db_session.add(penalty)
+        await db_session.flush()
+
+        response = await client.get(
+            "/penalties",
+            headers=admin_headers,
+            params={"userId": test_user.id}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) >= 1
+        assert all(p["user_id"] == test_user.id for p in data["data"])
+
+    async def test_list_penalties_filter_by_status(
+        self, client: AsyncClient, admin_headers: dict, test_user: User, db_session: AsyncSession
+    ):
+        """Test filtering penalties by status."""
+        penalty = UserPenalty(
+            user_id=test_user.id,
+            reason="Active penalty",
+            points=5,
+            status=PenaltyStatus.ACTIVE,
+        )
+        db_session.add(penalty)
+        await db_session.flush()
+
+        response = await client.get(
+            "/penalties",
+            headers=admin_headers,
+            params={"status": "active"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert all(p["status"] == "active" for p in data["data"])
+
+    async def test_list_penalties_search(
+        self, client: AsyncClient, admin_headers: dict, test_user: User, db_session: AsyncSession
+    ):
+        """Test searching penalties by reason."""
+        penalty = UserPenalty(
+            user_id=test_user.id,
+            reason="Late cancellation penalty",
+            points=5,
+            status=PenaltyStatus.ACTIVE,
+        )
+        db_session.add(penalty)
+        await db_session.flush()
+
+        response = await client.get(
+            "/penalties",
+            headers=admin_headers,
+            params={"q": "cancellation"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) >= 1
 
     async def test_add_penalty(
         self, client: AsyncClient, admin_headers: dict, test_user: User, completed_booking: Booking
@@ -231,6 +313,51 @@ class TestRatings:
         response = await client.get("/ratings", headers=auth_headers)
 
         assert response.status_code == 403
+
+    async def test_list_ratings_filter_by_user(
+        self, client: AsyncClient, admin_headers: dict, test_user: User, db_session: AsyncSession
+    ):
+        """Test filtering ratings by rated user ID."""
+        rating = UserRating(
+            rated_user_id=test_user.id,
+            rating=4,
+            comment="Good behavior",
+        )
+        db_session.add(rating)
+        await db_session.flush()
+
+        response = await client.get(
+            "/ratings",
+            headers=admin_headers,
+            params={"ratedUserId": test_user.id}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) >= 1
+        assert all(r["rated_user_id"] == test_user.id for r in data["data"])
+
+    async def test_list_ratings_search(
+        self, client: AsyncClient, admin_headers: dict, test_user: User, db_session: AsyncSession
+    ):
+        """Test searching ratings by comment."""
+        rating = UserRating(
+            rated_user_id=test_user.id,
+            rating=5,
+            comment="Excellent punctuality",
+        )
+        db_session.add(rating)
+        await db_session.flush()
+
+        response = await client.get(
+            "/ratings",
+            headers=admin_headers,
+            params={"q": "punctuality"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) >= 1
 
     async def test_add_rating(
         self, client: AsyncClient, admin_headers: dict, test_user: User, completed_booking: Booking

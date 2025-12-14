@@ -202,6 +202,262 @@ class TestDeleteSpace:
         assert response.status_code == 403
 
 
+class TestGetSpaceSchedule:
+    """Tests for GET /spaces/{space_id}/schedule"""
+
+    async def test_get_space_schedule_success(
+        self, client: AsyncClient, test_space: Space, test_user: User, db_session
+    ):
+        """Test getting space schedule for a specific date."""
+        from datetime import date, time, timedelta
+        from app.models import Booking, BookingStatus
+
+        # Create a booking for tomorrow
+        tomorrow = date.today() + timedelta(days=1)
+        booking = Booking(
+            user_id=test_user.id,
+            space_id=test_space.id,
+            booking_date=tomorrow,
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            attendees=5,
+            purpose="Test booking",
+            status=BookingStatus.APPROVED,
+        )
+        db_session.add(booking)
+        await db_session.flush()
+
+        response = await client.get(
+            f"/spaces/{test_space.id}/schedule",
+            params={"date": tomorrow.isoformat()}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["space_id"] == test_space.id
+        assert data["space_name"] == test_space.name
+        assert len(data["schedule"]) == 24
+
+    async def test_get_space_schedule_not_found(self, client: AsyncClient):
+        """Test getting schedule for non-existent space fails."""
+        from datetime import date, timedelta
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+
+        response = await client.get(
+            "/spaces/99999/schedule",
+            params={"date": tomorrow}
+        )
+
+        assert response.status_code == 404
+
+
+class TestGetAvailableSpaces:
+    """Tests for GET /spaces/available"""
+
+    async def test_get_available_spaces_success(
+        self, client: AsyncClient, test_space: Space
+    ):
+        """Test getting available spaces for a date and time range."""
+        from datetime import date, timedelta
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+
+        response = await client.get(
+            "/spaces/available",
+            params={
+                "date": tomorrow,
+                "startTime": "09:00",
+                "endTime": "11:00",
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "data" in data
+        assert "meta" in data
+        assert len(data["data"]) >= 1
+
+    async def test_get_available_spaces_with_conflict(
+        self, client: AsyncClient, test_space: Space, db_session
+    ):
+        """Test getting available spaces when some are booked."""
+        from datetime import date, time, timedelta
+        from app.models import Booking, BookingStatus, User, UserRole, UserStatus
+        from app.core.security import get_password_hash
+        import uuid
+
+        # Create a user for the booking
+        unique_id = uuid.uuid4().hex[:8]
+        user = User(
+            email=f"lecturer_{unique_id}@test.com",
+            password_hash=get_password_hash("password123"),
+            full_name="Test Lecturer",
+            role=UserRole.LECTURER,
+            status=UserStatus.ACTIVE,
+        )
+        db_session.add(user)
+        await db_session.flush()
+
+        tomorrow = date.today() + timedelta(days=1)
+        booking = Booking(
+            user_id=user.id,
+            space_id=test_space.id,
+            booking_date=tomorrow,
+            start_time=time(9, 0),
+            end_time=time(11, 0),
+            attendees=5,
+            purpose="Test",
+            status=BookingStatus.APPROVED,
+        )
+        db_session.add(booking)
+        await db_session.flush()
+
+        response = await client.get(
+            "/spaces/available",
+            params={
+                "date": tomorrow.isoformat(),
+                "startTime": "09:00",
+                "endTime": "11:00",
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        # test_space should not be in available spaces
+        space_ids = [s["id"] for s in data["data"]]
+        assert test_space.id not in space_ids
+
+    async def test_get_available_spaces_invalid_time_format(
+        self, client: AsyncClient
+    ):
+        """Test getting available spaces with invalid time format fails."""
+        from datetime import date, timedelta
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+
+        response = await client.get(
+            "/spaces/available",
+            params={
+                "date": tomorrow,
+                "startTime": "9am",
+                "endTime": "11am",
+            }
+        )
+
+        assert response.status_code == 400
+
+    async def test_get_available_spaces_non_rounded_hours(
+        self, client: AsyncClient
+    ):
+        """Test getting available spaces with non-rounded hours fails."""
+        from datetime import date, timedelta
+        tomorrow = (date.today() + timedelta(days=1)).isoformat()
+
+        response = await client.get(
+            "/spaces/available",
+            params={
+                "date": tomorrow,
+                "startTime": "09:30",
+                "endTime": "11:00",
+            }
+        )
+
+        assert response.status_code == 400
+
+
+class TestGetWeeklyAvailability:
+    """Tests for GET /spaces/weekly-availability"""
+
+    async def test_get_weekly_availability_success(
+        self, client: AsyncClient, test_space: Space
+    ):
+        """Test getting weekly availability for all spaces."""
+        from datetime import date, timedelta
+
+        # Get the Monday of next week
+        today = date.today()
+        days_until_monday = (7 - today.weekday()) % 7
+        next_monday = today + timedelta(days=days_until_monday if days_until_monday != 0 else 7)
+
+        response = await client.get(
+            "/spaces/weekly-availability",
+            params={"weekStart": next_monday.isoformat()}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert len(data) >= 1
+
+        # Check structure
+        space_data = data[0]
+        assert "id" in space_data
+        assert "name" in space_data
+        assert "availability" in space_data
+
+        # Should have 7 days * 19 hours (5am to 11pm) = 133 slots
+        assert len(space_data["availability"]) == 7 * 19
+
+    async def test_get_weekly_availability_with_bookings(
+        self, client: AsyncClient, test_space: Space, db_session
+    ):
+        """Test weekly availability reflects existing bookings."""
+        from datetime import date, time, timedelta
+        from app.models import Booking, BookingStatus, User, UserRole, UserStatus
+        from app.core.security import get_password_hash
+        import uuid
+
+        # Create a user for the booking
+        unique_id = uuid.uuid4().hex[:8]
+        user = User(
+            email=f"lecturer_{unique_id}@test.com",
+            password_hash=get_password_hash("password123"),
+            full_name="Test Lecturer",
+            role=UserRole.LECTURER,
+            status=UserStatus.ACTIVE,
+        )
+        db_session.add(user)
+        await db_session.flush()
+
+        # Get next Monday
+        today = date.today()
+        days_until_monday = (7 - today.weekday()) % 7
+        next_monday = today + timedelta(days=days_until_monday if days_until_monday != 0 else 7)
+
+        # Create booking for next Monday at 10 AM
+        booking = Booking(
+            user_id=user.id,
+            space_id=test_space.id,
+            booking_date=next_monday,
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            attendees=5,
+            purpose="Test",
+            status=BookingStatus.APPROVED,
+        )
+        db_session.add(booking)
+        await db_session.flush()
+
+        response = await client.get(
+            "/spaces/weekly-availability",
+            params={"weekStart": next_monday.isoformat()}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Find our test space
+        test_space_data = next((s for s in data if s["id"] == test_space.id), None)
+        assert test_space_data is not None
+
+        # Check that Monday at 10:00 is not available
+        monday_10am_slot = next(
+            (slot for slot in test_space_data["availability"]
+             if slot["date"] == next_monday.isoformat() and slot["hour"] == "10:00"),
+            None
+        )
+        assert monday_10am_slot is not None
+        assert monday_10am_slot["is_available"] is False
+
+
 class TestUtilities:
     """Tests for utilities endpoints."""
 
@@ -237,6 +493,37 @@ class TestUtilities:
         })
 
         assert response.status_code == 409
+
+    async def test_update_utility_as_admin(
+        self, client: AsyncClient, admin_headers: dict, test_utilities: list[Utility]
+    ):
+        """Test updating a utility as admin."""
+        utility = test_utilities[0]
+        response = await client.patch(
+            f"/utilities/{utility.id}",
+            headers=admin_headers,
+            json={
+                "label": "Updated Label",
+                "description": "Updated description"
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["label"] == "Updated Label"
+        assert data["description"] == "Updated description"
+
+    async def test_update_utility_not_found(
+        self, client: AsyncClient, admin_headers: dict
+    ):
+        """Test updating non-existent utility fails."""
+        response = await client.patch(
+            "/utilities/99999",
+            headers=admin_headers,
+            json={"label": "Updated"}
+        )
+
+        assert response.status_code == 404
 
     async def test_delete_utility(
         self, client: AsyncClient, admin_headers: dict, test_utilities: list[Utility]

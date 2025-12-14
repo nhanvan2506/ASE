@@ -7,6 +7,7 @@
 export enum UserRole {
   STUDENT = "student",
   ADMIN = "admin",
+  LECTURER = "lecturer", 
 }
 
 export enum UserStatus {

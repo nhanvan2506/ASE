@@ -40,6 +40,9 @@ class BookingResponse(BaseModel):
             space_response = SpaceResponse.from_orm_with_utilities(booking.space)
 
         if include_user and booking.user:
+            # Avoid lazy-loading bookings relationship in async context
+            # (prevents MissingGreenlet). If count is needed, ensure it is
+            # pre-fetched or add a dedicated field later.
             user_response = UserSummaryResponse(
                 id=booking.user.id,
                 full_name=booking.user.full_name,
@@ -48,7 +51,7 @@ class BookingResponse(BaseModel):
                 department=booking.user.department,
                 profile_image_url=booking.user.profile_image_url,
                 status=booking.user.status,
-                total_bookings=len(booking.user.bookings) if booking.user.bookings else 0,
+                total_bookings=0,
             )
 
         return cls(
@@ -87,3 +90,23 @@ class UpdateBookingStatusRequest(BaseModel):
     """Request schema for updating booking status."""
     status: BookingStatus
     cancellation_reason: str | None = None
+
+
+class HourlyOccupancy(BaseModel):
+    """Hourly occupancy slot in schedule."""
+    hour: int = Field(ge=0, le=23, description="Hour of the day (0-23)")
+    is_occupied: bool = Field(description="Whether the hour slot is occupied")
+    bookings: list["BookingResponse"] = Field(default_factory=list, description="Bookings in this hour")
+
+    model_config = {"from_attributes": True}
+
+
+class RoomScheduleResponse(BaseModel):
+    """Room schedule response (ROMS-compatible format)."""
+    space_id: int
+    date: date
+    occupancy: list[HourlyOccupancy] = Field(description="24-hour occupancy information")
+    total_bookings: int = Field(description="Total number of bookings for this date")
+
+    model_config = {"from_attributes": True}
+

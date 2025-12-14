@@ -1,7 +1,7 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, time, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, Request
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,6 +12,7 @@ from app.core.exceptions import (
     ForbiddenException,
     BadRequestException,
 )
+from app.core.audit_log import log_audit_event, AuditAction
 from app.dependencies import get_current_active_user, get_current_admin_user
 from app.models import Booking, Space, User, BookingStatus, UserRole
 from app.schemas import (
@@ -19,9 +20,119 @@ from app.schemas import (
     CreateBookingRequest,
     UpdateBookingStatusRequest,
 )
+from app.schemas.booking import HourlyOccupancy, RoomScheduleResponse
 from app.schemas.common import PaginatedResponse, PaginatedResponseMeta
 
 router = APIRouter()
+
+
+@router.get("/schedule/{space_id}", response_model=RoomScheduleResponse)
+async def get_room_schedule(
+    space_id: int,
+    db: Annotated[AsyncSession, Depends(get_async_db)],
+    query_date: date = Query(..., alias="date", description="Date in YYYY-MM-DD format")
+):
+    """Get 24-hour room schedule for a specific date (ROMS-compatible).
+    
+    Returns an array of 24 hourly slots (0-23) with occupancy information for the specified space and date.
+    This endpoint is compatible with the ROMS (Room Management Service) schedule format.
+    
+    **Caching:** Results are cached in Redis for 15 minutes to reduce database load.
+    """
+    from app.core.cache import get_cache, set_cache, get_schedule_cache_key
+    from app.core.config import settings
+    
+    # Generate cache key
+    date_str = query_date.isoformat()
+    cache_key = get_schedule_cache_key(space_id, date_str)
+    
+    # Try to get from cache first
+    cached_result = await get_cache(cache_key)
+    if cached_result:
+        # Return cached result
+        return RoomScheduleResponse(**cached_result)
+    
+    # Cache miss - query database
+    # Verify space exists
+    space_result = await db.execute(
+        select(Space).where(Space.id == space_id)
+    )
+    space = space_result.scalar_one_or_none()
+
+    if not space:
+        raise NotFoundException(detail="Space not found")
+
+    # Query all approved and pending bookings for this space and date
+    bookings_result = await db.execute(
+        select(Booking)
+        .where(
+            and_(
+                Booking.space_id == space_id,
+                Booking.booking_date == query_date,
+                Booking.status.in_([BookingStatus.PENDING, BookingStatus.APPROVED])
+            )
+        )
+        .options(
+            selectinload(Booking.space).selectinload(Space.utilities),
+            selectinload(Booking.user)
+        )
+        .order_by(Booking.start_time)
+    )
+    bookings = bookings_result.scalars().all()
+
+    # Build 24-hour occupancy array
+    occupancy = []
+    
+    for hour in range(24):
+        # Create full datetime objects for the slot start and end
+        # e.g., 2023-10-31 08:00:00 to 2023-10-31 09:00:00
+        slot_start_dt = datetime.combine(query_date, time(hour, 0))
+        slot_end_dt = slot_start_dt + timedelta(hours=1)
+
+        bookings_in_hour = []
+
+        for b in bookings:
+            # Convert booking times to datetimes on the query date
+            b_start_dt = datetime.combine(query_date, b.start_time)
+            b_end_dt = datetime.combine(query_date, b.end_time)
+
+            if b.end_time < b.start_time:
+                b_end_dt += timedelta(days=1)
+            
+            if b.end_time == time(0, 0) and b.start_time != time(0, 0):
+                 b_end_dt += timedelta(days=1)
+
+            latest_start = max(slot_start_dt, b_start_dt)
+            earliest_end = min(slot_end_dt, b_end_dt)
+
+            if latest_start < earliest_end:
+                bookings_in_hour.append(b)
+
+        hourly_slot = HourlyOccupancy(
+            hour=hour,
+            is_occupied=len(bookings_in_hour) > 0,
+            bookings=[
+                BookingResponse.from_orm_with_relations(b)
+                for b in bookings_in_hour
+            ]
+        )
+        occupancy.append(hourly_slot)
+
+    result = RoomScheduleResponse(
+        space_id=space_id,
+        date=query_date,
+        occupancy=occupancy,
+        total_bookings=len(bookings)
+    )
+    
+    # Cache the result for 15 minutes
+    await set_cache(
+        cache_key,
+        result.model_dump(),
+        settings.CACHE_TTL_SCHEDULE
+    )
+    
+    return result
 
 
 @router.get("", response_model=PaginatedResponse[BookingResponse])
@@ -41,9 +152,12 @@ async def list_bookings(
         selectinload(Booking.user)
     )
 
-    # Non-admin users can ONLY see their own bookings (ignore my and user_id parameters)
+    # Non-admin users can see their own bookings by default.
+    # If `my` is explicitly false, allow viewing all bookings for timetable visibility.
     if current_user.role != UserRole.ADMIN:
-        query = query.where(Booking.user_id == current_user.id)
+        if my:
+            query = query.where(Booking.user_id == current_user.id)
+        # Non-admins cannot filter by user_id; ignore user_id when provided
     else:
         # Admin can filter by user_id or see their own bookings
         if user_id:
@@ -80,6 +194,7 @@ async def list_bookings(
 async def get_booking(
     booking_id: int,
     current_user: Annotated[User, Depends(get_current_active_user)],
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_async_db)]
 ):
     """Get booking details."""
@@ -95,7 +210,31 @@ async def get_booking(
 
     # Non-admin can only view their own bookings
     if current_user.role != UserRole.ADMIN and booking.user_id != current_user.id:
+        # Log unauthorized access attempt
+        await log_audit_event(
+            db=db,
+            action=AuditAction.UNAUTHORIZED_ACCESS,
+            user_id=current_user.id,
+            resource_type="booking",
+            resource_id=booking_id,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            details=f"Attempted to view booking {booking_id}",
+            status="failed"
+        )
         raise ForbiddenException(detail="Not allowed to view this booking")
+
+    # Log successful access
+    await log_audit_event(
+        db=db,
+        action=AuditAction.BOOKING_VIEWED,
+        user_id=current_user.id,
+        resource_type="booking",
+        resource_id=booking_id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        status="success"
+    )
 
     return BookingResponse.from_orm_with_relations(booking)
 
@@ -104,9 +243,24 @@ async def get_booking(
 async def create_booking(
     request: CreateBookingRequest,
     current_user: Annotated[User, Depends(get_current_active_user)],
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_async_db)]
 ):
-    """Create a new booking request."""
+    """Create a new booking request. Only lecturers and admins can create bookings."""
+    # Only lecturers and admins can create bookings
+    if current_user.role not in [UserRole.LECTURER, UserRole.ADMIN]:
+        # Log unauthorized booking attempt
+        await log_audit_event(
+            db=db,
+            action=AuditAction.UNAUTHORIZED_ACCESS,
+            user_id=current_user.id,
+            resource_type="booking",
+            ip_address=http_request.client.host if http_request.client else None,
+            user_agent=http_request.headers.get("user-agent"),
+            details=f"Attempted to create booking for space {request.space_id}",
+            status="failed"
+        )
+        raise ForbiddenException(detail="Only lecturers and admins can create bookings")
     # Verify space exists and is active
     space_result = await db.execute(
         select(Space).where(Space.id == request.space_id).options(selectinload(Space.utilities))
@@ -125,23 +279,68 @@ async def create_booking(
             detail=f"Attendees ({request.attendees}) exceeds space capacity ({space.capacity})"
         )
 
+    # Validate booking is not in the past
+    now = datetime.now(timezone.utc)
+    booking_datetime = datetime.combine(request.booking_date, request.start_time)
+    # Convert to UTC-aware datetime for comparison
+    booking_datetime = booking_datetime.replace(tzinfo=timezone.utc)
+
+    if booking_datetime < now:
+        raise BadRequestException(detail="Cannot book time slots in the past")
+
     # Check time validity
     if request.end_time <= request.start_time:
         raise BadRequestException(detail="End time must be after start time")
 
-    # Check for time conflicts
-    conflict_query = select(Booking).where(
+    # Validate rounded hours - only allow bookings on the hour (XX:00)
+    if request.start_time.minute != 0 or request.start_time.second != 0:
+        raise BadRequestException(detail="Start time must be on the hour (e.g., 08:00, 09:00)")
+    
+    if request.end_time.minute != 0 or request.end_time.second != 0:
+        raise BadRequestException(detail="End time must be on the hour (e.g., 09:00, 10:00)")
+
+    # Check for time conflicts - now we need to check for continuous availability
+    # Get all bookings for this space and date
+    existing_bookings_query = select(Booking).where(
         and_(
             Booking.space_id == request.space_id,
             Booking.booking_date == request.booking_date,
             Booking.status.in_([BookingStatus.PENDING, BookingStatus.APPROVED]),
-            Booking.start_time < request.end_time,
-            Booking.end_time > request.start_time,
         )
-    )
-    conflict_result = await db.execute(conflict_query)
-    if conflict_result.scalar_one_or_none():
-        raise BadRequestException(detail="Time slot conflicts with existing booking")
+    ).order_by(Booking.start_time)
+    
+    existing_bookings_result = await db.execute(existing_bookings_query)
+    existing_bookings = existing_bookings_result.scalars().all()
+
+    # Check if the requested time slot overlaps with any existing booking
+    for booking in existing_bookings:
+        if request.start_time < booking.end_time and request.end_time > booking.start_time:
+            raise BadRequestException(
+                detail=f"Time slot conflicts with existing booking from {booking.start_time.strftime('%H:%M')} to {booking.end_time.strftime('%H:%M')}"
+            )
+    
+    # Validate continuous booking: Check if there are gaps in the requested time range
+    # If user wants to book 14:00-17:00 but 15:00-16:00 is already booked,
+    # they should only be able to book 14:00-15:00 or 16:00-17:00
+    requested_start_hour = request.start_time.hour
+    requested_end_hour = request.end_time.hour
+    
+    for hour in range(requested_start_hour, requested_end_hour):
+        hour_start = time(hour, 0)
+        hour_end = time(hour + 1, 0) if hour < 23 else time(23, 59, 59)
+        
+        # Check if this hour slot is occupied
+        is_occupied = any(
+            booking.start_time <= hour_start < booking.end_time or
+            booking.start_time < hour_end <= booking.end_time or
+            (hour_start <= booking.start_time and booking.end_time <= hour_end)
+            for booking in existing_bookings
+        )
+        
+        if is_occupied:
+            raise BadRequestException(
+                detail=f"Cannot book non-continuous time slots. Hour {hour}:00-{hour+1}:00 is already occupied."
+            )
 
     booking = Booking(
         user_id=current_user.id,
@@ -156,6 +355,26 @@ async def create_booking(
 
     db.add(booking)
     await db.flush()
+    
+    # Invalidate cache for this space and date
+    from app.core.cache import invalidate_schedule_cache
+    await invalidate_schedule_cache(
+        space_id=request.space_id,
+        date=request.booking_date.isoformat()
+    )
+
+    # Log booking creation (audit trail for security)
+    await log_audit_event(
+        db=db,
+        action=AuditAction.BOOKING_CREATED,
+        user_id=current_user.id,
+        resource_type="booking",
+        resource_id=booking.id,
+        ip_address=http_request.client.host if http_request.client else None,
+        user_agent=http_request.headers.get("user-agent"),
+        details=f"Created booking for space {request.space_id} on {request.booking_date}",
+        status="success"
+    )
 
     # Reload with relations
     query = select(Booking).where(Booking.id == booking.id).options(
@@ -173,6 +392,7 @@ async def update_booking(
     booking_id: int,
     request: UpdateBookingStatusRequest,
     current_user: Annotated[User, Depends(get_current_active_user)],
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_async_db)]
 ):
     """Update booking status (approve/reject/cancel/etc.)."""
@@ -210,6 +430,34 @@ async def update_booking(
         booking.approved_at = datetime.now(timezone.utc)
 
     await db.flush()
+    
+    # Invalidate cache for this space and date (status change affects schedule)
+    from app.core.cache import invalidate_schedule_cache
+    await invalidate_schedule_cache(
+        space_id=booking.space_id,
+        date=booking.booking_date.isoformat()
+    )
+    
+    # Log booking update (audit trail for security)
+    action_map = {
+        BookingStatus.APPROVED: AuditAction.BOOKING_APPROVED,
+        BookingStatus.REJECTED: AuditAction.BOOKING_REJECTED,
+        BookingStatus.CANCELLED: AuditAction.BOOKING_CANCELLED,
+    }
+    audit_action = action_map.get(request.status, AuditAction.BOOKING_UPDATED)
+    
+    await log_audit_event(
+        db=db,
+        action=audit_action,
+        user_id=current_user.id,
+        resource_type="booking",
+        resource_id=booking_id,
+        ip_address=http_request.client.host if http_request.client else None,
+        user_agent=http_request.headers.get("user-agent"),
+        details=f"Updated booking status to {request.status.value}",
+        status="success"
+    )
+    
     await db.refresh(booking)
 
     return BookingResponse.from_orm_with_relations(booking)

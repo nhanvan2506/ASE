@@ -21,6 +21,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isLecturer: boolean;
   loading: boolean;
   initializing: boolean;
   error: string | null;
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Derived state
   const isAuthenticated = !!user && !!token;
   const isAdmin = user?.role === 'admin';
+  const isLecturer = user?.role === 'lecturer';
 
   // ============================================================================
   // Fetch Current User
@@ -129,7 +131,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setError(null);
 
       toast.success('Successfully logged in!');
-      router.push('/');
+      
+      // Check if there's a return URL in the query params
+      const params = new URLSearchParams(window.location.search);
+      const returnUrl = params.get('returnUrl');
+      
+      if (returnUrl) {
+        router.push(decodeURIComponent(returnUrl));
+      } else {
+        router.push('/');
+      }
     } catch (err: any) {
       console.error('Login failed:', err);
       const errorMessage = err.message || 'Login failed';
@@ -138,7 +149,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   // ============================================================================
   // Register
@@ -157,7 +168,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setError(null);
 
       toast.success('Account created successfully!');
-      router.push('/');
+      
+      // Check if there's a return URL in the query params
+      const params = new URLSearchParams(window.location.search);
+      const returnUrl = params.get('returnUrl');
+      
+      if (returnUrl) {
+        router.push(decodeURIComponent(returnUrl));
+      } else {
+        router.push('/');
+      }
     } catch (err: any) {
       console.error('Registration failed:', err);
       const errorMessage = err.message || 'Registration failed';
@@ -166,7 +186,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   // ============================================================================
   // Logout
@@ -224,6 +244,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     token,
     isAuthenticated,
     isAdmin,
+    isLecturer,
     loading,
     initializing,
     error,
