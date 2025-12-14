@@ -26,19 +26,9 @@ pip install -r requirements.txt
 
 ### 3. File `.env`
 
-#### Neon PostgreSQL Cloud
 
 ```env
-# Neon Database Configuration
-# Example connection string from Neon:
-# postgresql://USER:PASSWORD@ep-xxxx.aws.neon.tech/neondb?sslmode=require
-
-POSTGRES_USER=neondb_owner
-POSTGRES_PASSWORD=your_neon_password
-POSTGRES_HOST=ep-xxxx.aws.neon.tech
-POSTGRES_PORT=5432
-POSTGRES_DB=neondb
-POSTGRES_SSL_MODE=require
+cp .env.example .env
 ```
 
 ## 🗄️ Database Setup

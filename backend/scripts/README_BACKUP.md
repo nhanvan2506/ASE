@@ -63,3 +63,4 @@ psql -h localhost -U postgres -d study_space < backups/backup_YYYYMMDD_HHMMSS.sq
 pg_restore -h localhost -U postgres -d study_space backups/backup_YYYYMMDD_HHMMSS.sql
 ```
 
+
